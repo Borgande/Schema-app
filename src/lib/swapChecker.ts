@@ -1,13 +1,45 @@
 import { CoverOption, GroupNumber, NearbyShift, PaybackDay, ShiftType, SwapOption, User } from './types';
 import { getShiftEnd, getShiftForDate, getShiftStart } from './schedule';
 
-const REST_MS = 11 * 60 * 60 * 1000; // 11 timmar i millisekunder
+const H = 60 * 60 * 1000; // 1 timme i ms
 
 /**
- * Kontrollerar om det finns tillräcklig vila (≥11h) mellan två tidpunkter.
+ * Minsta vilatid (ms) som krävs efter ett visst skifttyp.
+ *
+ * Regler:
+ *  - Efter Dag (17:30):  11h  (≥11h vila inom dygnet 20:00–20:00)
+ *  - Efter Natt (08:00): 14,5h sammanhängande
+ *  - Efter Dygn (08:00): 24h  sammanhängande
+ *
+ * Dygnsbryt är kl 20:00.
  */
-export function hasEnoughRest(prevEnd: Date, nextStart: Date): boolean {
-  return nextStart.getTime() - prevEnd.getTime() >= REST_MS;
+export function requiredRestMs(prevShiftType: ShiftType): number {
+  switch (prevShiftType) {
+    case 'N': return 14.5 * H;   // 14,5h efter nattpass
+    case 'X': return 24   * H;   // 24h efter dygnpass
+    case 'D': return 11   * H;   // 11h efter dagpass
+    default:  return 0;
+  }
+}
+
+/**
+ * Kontrollerar om det finns tillräcklig vila mellan slutet av föregående pass
+ * och starten av nästa, givet vilken typ det föregående passet var.
+ */
+export function hasEnoughRest(prevEnd: Date, nextStart: Date, prevShiftType: ShiftType): boolean {
+  return nextStart.getTime() - prevEnd.getTime() >= requiredRestMs(prevShiftType);
+}
+
+/**
+ * Returnerar en beskrivande text för vila-kravet efter ett pass.
+ */
+export function restLabel(shiftType: ShiftType): string {
+  switch (shiftType) {
+    case 'N': return '14,5h sammanhängande vila (efter nattpass)';
+    case 'X': return '24h sammanhängande vila (efter dygnpass)';
+    case 'D': return '11h vila (efter dagpass)';
+    default:  return '';
+  }
 }
 
 /**
@@ -76,20 +108,20 @@ export function checkSwapCompatibility(
 
   if (newStartForA && userPrev) {
     const prevEnd = getShiftEnd(userPrev.date, userPrev.type);
-    if (prevEnd && !hasEnoughRest(prevEnd, newStartForA)) {
+    if (prevEnd && !hasEnoughRest(prevEnd, newStartForA, userPrev.type)) {
       return {
         valid: false,
-        reason: `Du har för lite vila (< 11h) mellan ditt föregående pass och det nya passet.`,
+        reason: `Du har för lite vila efter ditt föregående pass (krav: ${restLabel(userPrev.type)}).`,
       };
     }
   }
 
   if (newEndForA && userNext) {
     const nextStart = getShiftStart(userNext.date, userNext.type);
-    if (nextStart && !hasEnoughRest(newEndForA, nextStart)) {
+    if (nextStart && !hasEnoughRest(newEndForA, nextStart, partnerShift)) {
       return {
         valid: false,
-        reason: `Du har för lite vila (< 11h) mellan det nya passet och ditt nästkommande pass.`,
+        reason: `Du har för lite vila efter det nya passet innan ditt nästkommande pass (krav: ${restLabel(partnerShift)}).`,
       };
     }
   }
@@ -103,20 +135,20 @@ export function checkSwapCompatibility(
 
   if (newStartForB && partnerPrev) {
     const prevEnd = getShiftEnd(partnerPrev.date, partnerPrev.type);
-    if (prevEnd && !hasEnoughRest(prevEnd, newStartForB)) {
+    if (prevEnd && !hasEnoughRest(prevEnd, newStartForB, partnerPrev.type)) {
       return {
         valid: false,
-        reason: `Partnern har för lite vila (< 11h) mellan deras föregående pass och det nya passet.`,
+        reason: `Partnern har för lite vila efter sitt föregående pass (krav: ${restLabel(partnerPrev.type)}).`,
       };
     }
   }
 
   if (newEndForB && partnerNext) {
     const nextStart = getShiftStart(partnerNext.date, partnerNext.type);
-    if (nextStart && !hasEnoughRest(newEndForB, nextStart)) {
+    if (nextStart && !hasEnoughRest(newEndForB, nextStart, userShift)) {
       return {
         valid: false,
-        reason: `Partnern har för lite vila (< 11h) mellan det nya passet och deras nästkommande pass.`,
+        reason: `Partnern har för lite vila efter det nya passet innan deras nästkommande pass (krav: ${restLabel(userShift)}).`,
       };
     }
   }
@@ -227,9 +259,9 @@ export function findCoverOptions(
       const candPrev = findPrevShift(coverDate, candidate.group, cycleStart);
       if (candPrev) {
         const prevEnd = getShiftEnd(candPrev.date, candPrev.type);
-        if (prevEnd && !hasEnoughRest(prevEnd, coverShiftStart)) {
+        if (prevEnd && !hasEnoughRest(prevEnd, coverShiftStart, candPrev.type)) {
           canCover = false;
-          coverReason = 'För lite vila (< 11h) innan ditt pass.';
+          coverReason = `För lite vila innan ditt pass (krav: ${restLabel(candPrev.type)}).`;
         }
       }
     }
@@ -238,9 +270,9 @@ export function findCoverOptions(
       const candNext = findNextShift(coverDate, candidate.group, cycleStart);
       if (candNext) {
         const nextStart = getShiftStart(candNext.date, candNext.type);
-        if (nextStart && !hasEnoughRest(coverShiftEnd, nextStart)) {
+        if (nextStart && !hasEnoughRest(coverShiftEnd, nextStart, userShift)) {
           canCover = false;
-          coverReason = 'För lite vila (< 11h) efter ditt pass.';
+          coverReason = `För lite vila efter ditt pass (krav: ${restLabel(userShift)}).`;
         }
       }
     }
@@ -272,9 +304,9 @@ export function findCoverOptions(
         const userPrev = findPrevShift(day, user.group, cycleStart);
         if (userPrev) {
           const prevEnd = getShiftEnd(userPrev.date, userPrev.type);
-          if (prevEnd && !hasEnoughRest(prevEnd, paybackStart)) {
+          if (prevEnd && !hasEnoughRest(prevEnd, paybackStart, userPrev.type)) {
             valid = false;
-            reason = 'Du har för lite vila (< 11h) innan återpasset.';
+            reason = `För lite vila innan återpasset (krav: ${restLabel(userPrev.type)}).`;
           }
         }
       }
@@ -283,9 +315,9 @@ export function findCoverOptions(
         const userNext = findNextShift(day, user.group, cycleStart);
         if (userNext) {
           const nextStart = getShiftStart(userNext.date, userNext.type);
-          if (nextStart && !hasEnoughRest(paybackEnd, nextStart)) {
+          if (nextStart && !hasEnoughRest(paybackEnd, nextStart, candidateDayShift)) {
             valid = false;
-            reason = 'Du har för lite vila (< 11h) efter återpasset.';
+            reason = `För lite vila efter återpasset (krav: ${restLabel(candidateDayShift)}).`;
           }
         }
       }

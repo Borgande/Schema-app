@@ -311,12 +311,14 @@ function EmptyUsersMessage() {
 function RestRuleInfo() {
   return (
     <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-      <h3 className="text-sm font-semibold text-blue-800 mb-1">Om 11h-viloregeln</h3>
-      <p className="text-xs text-blue-700">
-        Minst 11 timmars sammanhängande vila krävs mellan arbetspass.
-        Återpass måste ligga minst 4 dagar från täckningsdagen för att inte ha
-        &quot;anslutning&quot; till det ursprungliga datumet.
-      </p>
+      <h3 className="text-sm font-semibold text-blue-800 mb-2">Viloregler (dygnsbryt 20:00)</h3>
+      <ul className="text-xs text-blue-700 space-y-1">
+        <li><span className="font-medium">Efter dagpass:</span> minst 11h vila</li>
+        <li><span className="font-medium">Efter nattpass:</span> minst 14,5h sammanhängande vila</li>
+        <li><span className="font-medium">Efter dygnpass:</span> minst 24h sammanhängande vila</li>
+        <li className="pt-1 text-blue-600">Varje dygn (20:00–20:00) ska innehålla minst 11h vila.</li>
+        <li className="text-blue-600">Återpass måste ligga minst 4 dagar från täckningsdagen.</li>
+      </ul>
     </div>
   );
 }
