@@ -46,3 +46,23 @@ export interface NearbyShift {
   date: Date;
   type: ShiftType;
 }
+
+/** Ett möjligt återpass (användaren jobbar tillbaka för den täckande personen) */
+export interface PaybackDay {
+  date: Date;
+  shiftType: ShiftType;
+  valid: boolean;
+  /** Om ogiltigt, förklaring */
+  reason?: string;
+}
+
+/** En person som potentiellt kan täcka ett pass, med tillhörande återpassalternativ */
+export interface CoverOption {
+  coverPerson: User;
+  /** Kan personen fysiskt täcka passet (11h-regeln OK)? */
+  canCover: boolean;
+  /** Om canCover=false, varför */
+  coverReason?: string;
+  /** Dagar där användaren kan jobba tillbaka för den täckande personen */
+  paybackOptions: PaybackDay[];
+}
