@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#111827"/>
+  <!-- Calendar grid -->
+  <rect x="100" y="130" width="312" height="280" rx="20" fill="#1f2937"/>
+  <!-- Top bar -->
+  <rect x="100" y="130" width="312" height="70" rx="20" fill="#3b82f6"/>
+  <rect x="100" y="170" width="312" height="30" fill="#3b82f6"/>
+  <!-- Calendar dots / shift blocks -->
+  <!-- Row 1 -->
+  <rect x="130" y="230" width="55" height="36" rx="8" fill="#3b82f6"/>
+  <rect x="205" y="230" width="55" height="36" rx="8" fill="#7c3aed"/>
+  <rect x="280" y="230" width="55" height="36" rx="8" fill="#ea580c"/>
+  <rect x="355" y="230" width="55" height="36" rx="8" fill="#6b7280" opacity="0.4"/>
+  <!-- Row 2 -->
+  <rect x="130" y="286" width="55" height="36" rx="8" fill="#6b7280" opacity="0.4"/>
+  <rect x="205" y="286" width="55" height="36" rx="8" fill="#3b82f6"/>
+  <rect x="280" y="286" width="55" height="36" rx="8" fill="#6b7280" opacity="0.4"/>
+  <rect x="355" y="286" width="55" height="36" rx="8" fill="#7c3aed"/>
+  <!-- Row 3 -->
+  <rect x="130" y="342" width="55" height="36" rx="8" fill="#7c3aed"/>
+  <rect x="205" y="342" width="55" height="36" rx="8" fill="#6b7280" opacity="0.4"/>
+  <rect x="280" y="342" width="55" height="36" rx="8" fill="#ea580c"/>
+  <rect x="355" y="342" width="55" height="36" rx="8" fill="#3b82f6"/>
+</svg>
