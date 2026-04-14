@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { GroupNumber, ScheduledDay, User } from '@/lib/types';
-import { getScheduleRange, formatSwedishDate, isWeekend, parseDate } from '@/lib/schedule';
+import { getScheduleRange, formatSwedishDate, formatDate, isWeekend, parseDate } from '@/lib/schedule';
 import { getConfig, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
 
@@ -130,7 +130,7 @@ export default function SchemaPage() {
                       >
                         {shift !== 'L' ? (
                           <Link
-                            href={`/byta?datum=${day.date.toISOString().slice(0, 10)}`}
+                            href={`/byta?datum=${formatDate(day.date)}`}
                             className="hover:opacity-75 transition-opacity"
                           >
                             <ShiftBadge type={shift} size="sm" />

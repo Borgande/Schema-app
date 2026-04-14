@@ -12,6 +12,14 @@ import SwapCard from '@/components/SwapCard';
 
 type Mode = 'byta' | 'tacka';
 
+/** Formaterar ett Date-objekt till YYYY-MM-DD i lokal tid (undviker UTC-förskjutning). */
+function toLocalDateInput(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function BytaContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -88,7 +96,7 @@ function BytaContent() {
         <label className="block text-sm font-medium text-gray-700 mb-1">Välj datum</label>
         <input
           type="date"
-          value={date ? date.toISOString().slice(0, 10) : ''}
+          value={date ? toLocalDateInput(date) : ''}
           onChange={handleDateChange}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         />

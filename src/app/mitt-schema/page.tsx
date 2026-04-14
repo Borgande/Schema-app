@@ -6,6 +6,7 @@ import { ScheduledDay, User } from '@/lib/types';
 import {
   getScheduleRange,
   formatSwedishDate,
+  formatDate,
   isWeekend,
   parseDate,
   SHIFT_INFO,
@@ -79,7 +80,7 @@ export default function MittSchemaPage() {
             <div className="flex gap-2 items-center">
               <ShiftBadge type={nextShiftDay.shifts[user.group]} size="lg" />
               <Link
-                href={`/byta?datum=${nextShiftDay.date.toISOString().slice(0, 10)}`}
+                href={`/byta?datum=${formatDate(nextShiftDay.date)}`}
                 className="text-sm text-blue-600 hover:underline ml-2"
               >
                 Byta →
@@ -121,7 +122,7 @@ export default function MittSchemaPage() {
               <div className="flex items-center gap-3">
                 <ShiftBadge type={shift} />
                 <Link
-                  href={`/byta?datum=${day.date.toISOString().slice(0, 10)}`}
+                  href={`/byta?datum=${formatDate(day.date)}`}
                   className="text-xs text-blue-600 hover:underline whitespace-nowrap"
                 >
                   Byta pass
