@@ -54,6 +54,8 @@ export interface PaybackDay {
   valid: boolean;
   /** Om ogiltigt, förklaring */
   reason?: string;
+  /** Är detta ett D+N-undantagspass (dagpass + nattpass samma kalenderdag)? */
+  isDN?: boolean;
 }
 
 /** En person som potentiellt kan täcka ett pass, med tillhörande återpassalternativ */
@@ -65,4 +67,6 @@ export interface CoverOption {
   coverReason?: string;
   /** Dagar där användaren kan jobba tillbaka för den täckande personen */
   paybackOptions: PaybackDay[];
+  /** Täcks via D+N-undantaget (kandidaten har D/N och täcker det motsatta passet samma dag)? */
+  isDN?: boolean;
 }

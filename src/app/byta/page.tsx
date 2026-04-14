@@ -193,9 +193,13 @@ function BytaContent() {
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-700">
                 <strong>Så fungerar det:</strong> Du vill ha{' '}
                 {date ? formatSwedishDate(date) : 'detta datum'} ledigt.
-                Nedan visas vem som kan täcka ditt pass (de är lediga den dagen).
+                Nedan visas vem som kan täcka ditt pass (de är lediga den dagen, eller jobbar D+N-undantag).
                 Tryck på en person för att se vilka dagar du kan jobba tillbaka —
                 dagar då du är ledig och de jobbar, minst 4 dagar från täckningsdagen.
+                <span className="block mt-1">
+                  <strong>D+N-undantag:</strong> en kollega med D kan täcka ditt N-pass (och vice versa) –
+                  märks med <span className="bg-orange-100 text-orange-700 px-1 rounded">D+N</span>.
+                </span>
               </div>
 
               {coverOptions.length === 0 ? (
@@ -245,6 +249,11 @@ function CoverCard({ option }: { option: CoverOption }) {
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${GROUP_BADGE[option.coverPerson.group]}`}>
             Grupp {option.coverPerson.group}
           </span>
+          {option.isDN && (
+            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200 font-medium">
+              D+N
+            </span>
+          )}
           {option.canCover ? (
             <span className="text-xs text-green-700 font-medium">Kan täcka</span>
           ) : (
@@ -280,13 +289,20 @@ function CoverCard({ option }: { option: CoverOption }) {
                     className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2"
                   >
                     <span className="text-sm text-gray-700">{formatSwedishDate(pb.date)}</span>
-                    <ShiftBadge type={pb.shiftType} size="sm" />
+                    <div className="flex items-center gap-1.5">
+                      {pb.isDN && (
+                        <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
+                          D+N
+                        </span>
+                      )}
+                      <ShiftBadge type={pb.shiftType} size="sm" />
+                    </div>
                   </div>
                 ))}
               </div>
               {invalidPaybacks.length > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
-                  + {invalidPaybacks.length} dagar bryter 11h-regeln (visas ej)
+                  + {invalidPaybacks.length} dagar bryter viloreglerna (visas ej)
                 </p>
               )}
             </>
@@ -318,6 +334,10 @@ function RestRuleInfo() {
         <li><span className="font-medium">Efter dygnpass:</span> minst 24h sammanhängande vila</li>
         <li className="pt-1 text-blue-600">Varje dygn (20:00–20:00) ska innehålla minst 11h vila.</li>
         <li className="text-blue-600">Återpass måste ligga minst 4 dagar från täckningsdagen.</li>
+        <li className="pt-1 border-t border-blue-200 text-orange-700">
+          <span className="font-medium">D+N-undantag:</span> dagpass direkt följt av nattpass (0h vila) är tillåtet –
+          kräver minst 24h sammanhängande vila efteråt.
+        </li>
       </ul>
     </div>
   );

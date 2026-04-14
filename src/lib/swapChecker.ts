@@ -13,7 +13,9 @@ const H = 60 * 60 * 1000; // 1 timme i ms
  *
  * Dygnsbryt är kl 20:00.
  */
-export function requiredRestMs(prevShiftType: ShiftType): number {
+export function requiredRestMs(prevShiftType: ShiftType, isDNPair = false): number {
+  // D+N-undantag: N som direkt föregås av D samma dag kräver 24h vila (inte 14,5h)
+  if (prevShiftType === 'N' && isDNPair) return 24 * H;
   switch (prevShiftType) {
     case 'N': return 14.5 * H;   // 14,5h efter nattpass
     case 'X': return 24   * H;   // 24h efter dygnpass
@@ -26,14 +28,25 @@ export function requiredRestMs(prevShiftType: ShiftType): number {
  * Kontrollerar om det finns tillräcklig vila mellan slutet av föregående pass
  * och starten av nästa, givet vilken typ det föregående passet var.
  */
-export function hasEnoughRest(prevEnd: Date, nextStart: Date, prevShiftType: ShiftType): boolean {
+export function hasEnoughRest(
+  prevEnd: Date,
+  nextStart: Date,
+  prevShiftType: ShiftType,
+  nextShiftType?: ShiftType,
+): boolean {
+  // D+N-undantag: D slutar 17:30, N börjar 17:30 samma dag → gap ≈ 0 ms → tillåtet
+  if (prevShiftType === 'D' && nextShiftType === 'N') {
+    const gap = nextStart.getTime() - prevEnd.getTime();
+    if (gap >= -60_000 && gap <= 60_000) return true;
+  }
   return nextStart.getTime() - prevEnd.getTime() >= requiredRestMs(prevShiftType);
 }
 
 /**
  * Returnerar en beskrivande text för vila-kravet efter ett pass.
  */
-export function restLabel(shiftType: ShiftType): string {
+export function restLabel(shiftType: ShiftType, isDN = false): string {
+  if (shiftType === 'N' && isDN) return '24h sammanhängande vila (D+N-undantag)';
   switch (shiftType) {
     case 'N': return '14,5h sammanhängande vila (efter nattpass)';
     case 'X': return '24h sammanhängande vila (efter dygnpass)';
@@ -108,7 +121,7 @@ export function checkSwapCompatibility(
 
   if (newStartForA && userPrev) {
     const prevEnd = getShiftEnd(userPrev.date, userPrev.type);
-    if (prevEnd && !hasEnoughRest(prevEnd, newStartForA, userPrev.type)) {
+    if (prevEnd && !hasEnoughRest(prevEnd, newStartForA, userPrev.type, partnerShift)) {
       return {
         valid: false,
         reason: `Du har för lite vila efter ditt föregående pass (krav: ${restLabel(userPrev.type)}).`,
@@ -135,7 +148,7 @@ export function checkSwapCompatibility(
 
   if (newStartForB && partnerPrev) {
     const prevEnd = getShiftEnd(partnerPrev.date, partnerPrev.type);
-    if (prevEnd && !hasEnoughRest(prevEnd, newStartForB, partnerPrev.type)) {
+    if (prevEnd && !hasEnoughRest(prevEnd, newStartForB, partnerPrev.type, userShift)) {
       return {
         valid: false,
         reason: `Partnern har för lite vila efter sitt föregående pass (krav: ${restLabel(partnerPrev.type)}).`,
@@ -248,84 +261,154 @@ export function findCoverOptions(
 
     const candidateShiftOnCoverDay = getShiftForDate(coverDate, candidate.group, cycleStart);
 
-    // Kandidaten måste vara LEDIG den dagen för att kunna täcka
-    if (candidateShiftOnCoverDay !== 'L') continue;
+    const isL = candidateShiftOnCoverDay === 'L';
+    // D+N-undantag: kandidat har D och täcker N (jobbar D+N), eller har N och täcker D (D sedan N)
+    const isDNcover =
+      (candidateShiftOnCoverDay === 'D' && userShift === 'N') ||
+      (candidateShiftOnCoverDay === 'N' && userShift === 'D');
 
-    // Kontrollera om kandidaten klarar 11h-regeln för att täcka passet
+    if (!isL && !isDNcover) continue;
+
     let canCover = true;
     let coverReason: string | undefined;
 
-    if (coverShiftStart) {
-      const candPrev = findPrevShift(coverDate, candidate.group, cycleStart);
-      if (candPrev) {
-        const prevEnd = getShiftEnd(candPrev.date, candPrev.type);
-        if (prevEnd && !hasEnoughRest(prevEnd, coverShiftStart, candPrev.type)) {
-          canCover = false;
-          coverReason = `För lite vila innan ditt pass (krav: ${restLabel(candPrev.type)}).`;
+    if (isDNcover) {
+      // D+N: hela kedjan startar med D (08:00) och slutar med N (08:00 nästa dag)
+      const dnStart = getShiftStart(coverDate, 'D');  // 08:00
+      const dnEnd   = getShiftEnd(coverDate, 'N');    // 08:00 nästa dag
+
+      if (dnStart) {
+        const candPrev = findPrevShift(coverDate, candidate.group, cycleStart);
+        if (candPrev) {
+          const prevEnd = getShiftEnd(candPrev.date, candPrev.type);
+          if (prevEnd && !hasEnoughRest(prevEnd, dnStart, candPrev.type)) {
+            canCover = false;
+            coverReason = `För lite vila innan D+N-passet (krav: ${restLabel(candPrev.type)}).`;
+          }
+        }
+      }
+
+      if (canCover && dnEnd) {
+        const candNext = findNextShift(coverDate, candidate.group, cycleStart);
+        if (candNext) {
+          const nextStart = getShiftStart(candNext.date, candNext.type);
+          // Efter D+N krävs 24h vila (samma som efter dygnpass)
+          if (nextStart && nextStart.getTime() - dnEnd.getTime() < 24 * H) {
+            canCover = false;
+            coverReason = `För lite vila efter D+N-passet (krav: 24h vila).`;
+          }
+        }
+      }
+    } else {
+      // Normal L-kandidat: befintlig logik
+      if (coverShiftStart) {
+        const candPrev = findPrevShift(coverDate, candidate.group, cycleStart);
+        if (candPrev) {
+          const prevEnd = getShiftEnd(candPrev.date, candPrev.type);
+          if (prevEnd && !hasEnoughRest(prevEnd, coverShiftStart, candPrev.type)) {
+            canCover = false;
+            coverReason = `För lite vila innan ditt pass (krav: ${restLabel(candPrev.type)}).`;
+          }
+        }
+      }
+
+      if (canCover && coverShiftEnd) {
+        const candNext = findNextShift(coverDate, candidate.group, cycleStart);
+        if (candNext) {
+          const nextStart = getShiftStart(candNext.date, candNext.type);
+          if (nextStart && !hasEnoughRest(coverShiftEnd, nextStart, userShift)) {
+            canCover = false;
+            coverReason = `För lite vila efter ditt pass (krav: ${restLabel(userShift)}).`;
+          }
         }
       }
     }
 
-    if (canCover && coverShiftEnd) {
-      const candNext = findNextShift(coverDate, candidate.group, cycleStart);
-      if (candNext) {
-        const nextStart = getShiftStart(candNext.date, candNext.type);
-        if (nextStart && !hasEnoughRest(coverShiftEnd, nextStart, userShift)) {
-          canCover = false;
-          coverReason = `För lite vila efter ditt pass (krav: ${restLabel(userShift)}).`;
-        }
-      }
-    }
-
-    // Hitta möjliga återpass: dagar där kandidaten jobbar och användaren är ledig
+    // Hitta möjliga återpass: dagar där kandidaten jobbar och användaren är ledig (eller D+N)
     const paybackOptions: PaybackDay[] = [];
 
     for (let offset = 1; offset <= lookaheadDays; offset++) {
       const day = new Date(coverDate);
       day.setDate(day.getDate() + offset);
 
-      // Måste ha tillräckligt avstånd från täckningsdagen
       if (offset < PAYBACK_MIN_GAP_DAYS) continue;
 
       const userDayShift = getShiftForDate(day, user.group, cycleStart);
       const candidateDayShift = getShiftForDate(day, candidate.group, cycleStart);
 
-      // Användaren måste vara ledig, kandidaten måste jobba
-      if (userDayShift !== 'L' || candidateDayShift === 'L') continue;
+      if (candidateDayShift === 'L') continue;
 
-      // Kontrollera 11h-regeln för användaren som jobbar återpasset
+      // D+N-återpass: användaren har D och återpasset är N (eller vice versa)
+      const isDNPayback =
+        (userDayShift === 'D' && candidateDayShift === 'N') ||
+        (userDayShift === 'N' && candidateDayShift === 'D');
+
+      // Hoppa över om användaren jobbar och det inte är ett D+N-undantag
+      if (userDayShift !== 'L' && !isDNPayback) continue;
+
       let valid = true;
       let reason: string | undefined;
 
-      const paybackStart = getShiftStart(day, candidateDayShift);
-      const paybackEnd = getShiftEnd(day, candidateDayShift);
+      if (isDNPayback) {
+        // D+N-återpass: kontrollera hela kedjan D 08:00 → N 08:00 nästa dag
+        const dnStart = getShiftStart(day, 'D');
+        const dnEnd   = getShiftEnd(day, 'N');
 
-      if (paybackStart) {
-        const userPrev = findPrevShift(day, user.group, cycleStart);
-        if (userPrev) {
-          const prevEnd = getShiftEnd(userPrev.date, userPrev.type);
-          if (prevEnd && !hasEnoughRest(prevEnd, paybackStart, userPrev.type)) {
-            valid = false;
-            reason = `För lite vila innan återpasset (krav: ${restLabel(userPrev.type)}).`;
+        if (dnStart) {
+          const userPrev = findPrevShift(day, user.group, cycleStart);
+          if (userPrev) {
+            const prevEnd = getShiftEnd(userPrev.date, userPrev.type);
+            if (prevEnd && !hasEnoughRest(prevEnd, dnStart, userPrev.type)) {
+              valid = false;
+              reason = `För lite vila innan D+N-återpasset (krav: ${restLabel(userPrev.type)}).`;
+            }
           }
         }
-      }
 
-      if (valid && paybackEnd) {
-        const userNext = findNextShift(day, user.group, cycleStart);
-        if (userNext) {
-          const nextStart = getShiftStart(userNext.date, userNext.type);
-          if (nextStart && !hasEnoughRest(paybackEnd, nextStart, candidateDayShift)) {
-            valid = false;
-            reason = `För lite vila efter återpasset (krav: ${restLabel(candidateDayShift)}).`;
+        if (valid && dnEnd) {
+          const userNext = findNextShift(day, user.group, cycleStart);
+          if (userNext) {
+            const nextStart = getShiftStart(userNext.date, userNext.type);
+            if (nextStart && nextStart.getTime() - dnEnd.getTime() < 24 * H) {
+              valid = false;
+              reason = `För lite vila efter D+N-återpasset (krav: 24h vila).`;
+            }
           }
         }
-      }
 
-      paybackOptions.push({ date: day, shiftType: candidateDayShift, valid, reason });
+        paybackOptions.push({ date: day, shiftType: candidateDayShift, valid, reason, isDN: true });
+      } else {
+        // Normalt återpass (användaren är ledig)
+        const paybackStart = getShiftStart(day, candidateDayShift);
+        const paybackEnd = getShiftEnd(day, candidateDayShift);
+
+        if (paybackStart) {
+          const userPrev = findPrevShift(day, user.group, cycleStart);
+          if (userPrev) {
+            const prevEnd = getShiftEnd(userPrev.date, userPrev.type);
+            if (prevEnd && !hasEnoughRest(prevEnd, paybackStart, userPrev.type)) {
+              valid = false;
+              reason = `För lite vila innan återpasset (krav: ${restLabel(userPrev.type)}).`;
+            }
+          }
+        }
+
+        if (valid && paybackEnd) {
+          const userNext = findNextShift(day, user.group, cycleStart);
+          if (userNext) {
+            const nextStart = getShiftStart(userNext.date, userNext.type);
+            if (nextStart && !hasEnoughRest(paybackEnd, nextStart, candidateDayShift)) {
+              valid = false;
+              reason = `För lite vila efter återpasset (krav: ${restLabel(candidateDayShift)}).`;
+            }
+          }
+        }
+
+        paybackOptions.push({ date: day, shiftType: candidateDayShift, valid, reason });
+      }
     }
 
-    options.push({ coverPerson: candidate, canCover, coverReason, paybackOptions });
+    options.push({ coverPerson: candidate, canCover, coverReason, paybackOptions, isDN: isDNcover });
   }
 
   // Sortera: kan täcka + har giltiga återpass först
