@@ -24,9 +24,10 @@ export interface User {
   group: GroupNumber;
 }
 
-export interface BlockedDate {
+export interface BlockedPeriod {
   userName: string;
-  date: string; // YYYY-MM-DD
+  from: string; // YYYY-MM-DD
+  to: string;   // YYYY-MM-DD
 }
 
 export interface SwapRecord {
@@ -41,7 +42,7 @@ export interface AppConfig {
   cycleStartDate: string;
   /** Kända användare i appen */
   users: User[];
-  blockedDates?: BlockedDate[];
+  blockedPeriods?: BlockedPeriod[];
   swapRecords?: SwapRecord[];
 }
 
@@ -50,7 +51,9 @@ export interface SwapOption {
   partnerGroup: GroupNumber;
   myShift: ShiftType;
   partnerShift: ShiftType;
-  date: Date;
+  date: Date;         // User's shift date (the date they want off)
+  partnerDate: Date;  // Partner's shift date (same or ±1 day)
+  dayOffset: number;  // 0, -1, or +1
   valid: boolean;
   /** Om ogiltig, förklaring */
   reason?: string;

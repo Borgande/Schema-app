@@ -1,6 +1,6 @@
 import { SwapOption } from '@/lib/types';
 import ShiftBadge from './ShiftBadge';
-import { SHIFT_INFO } from '@/lib/schedule';
+import { formatSwedishDate, SHIFT_INFO } from '@/lib/schedule';
 
 interface SwapCardProps {
   option: SwapOption;
@@ -43,9 +43,17 @@ export default function SwapCard({ option, onRegister, registered }: SwapCardPro
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${GROUP_BADGE[option.partnerGroup]}`}>
                 {GROUP_LABELS[option.partnerGroup]}
               </span>
+              {option.dayOffset !== 0 && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                  {option.dayOffset === 1 ? 'Dagen efter' : 'Dagen innan'}
+                </span>
+              )}
             </div>
             <div className="text-xs text-gray-500 mt-0.5">
               Deras pass: {SHIFT_INFO[option.partnerShift].duration}
+              {option.dayOffset !== 0 && (
+                <span className="ml-1">· {formatSwedishDate(option.partnerDate)}</span>
+              )}
             </div>
           </div>
         </div>

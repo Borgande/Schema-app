@@ -1,4 +1,4 @@
-import { AppConfig, BlockedDate, GroupNumber, SwapRecord, User } from './types';
+import { AppConfig, BlockedPeriod, GroupNumber, SwapRecord, User } from './types';
 
 const USER_KEY = 'schema_user';
 const CONFIG_KEY = 'schema_config';
@@ -57,25 +57,25 @@ export function addUser(user: User): void {
   }
 }
 
-export function getBlockedDates(): BlockedDate[] {
-  return getConfig().blockedDates ?? [];
+export function getBlockedPeriods(): BlockedPeriod[] {
+  return getConfig().blockedPeriods ?? [];
 }
 
-export function addBlockedDate(entry: BlockedDate): void {
+export function addBlockedPeriod(period: BlockedPeriod): void {
   const config = getConfig();
-  const existing = config.blockedDates ?? [];
-  const alreadyExists = existing.some(b => b.userName === entry.userName && b.date === entry.date);
+  const existing = config.blockedPeriods ?? [];
+  const alreadyExists = existing.some(p => p.userName === period.userName && p.from === period.from);
   if (!alreadyExists) {
-    setConfig({ ...config, blockedDates: [...existing, entry] });
+    setConfig({ ...config, blockedPeriods: [...existing, period] });
   }
 }
 
-export function removeBlockedDate(userName: string, date: string): void {
+export function removeBlockedPeriod(userName: string, from: string): void {
   const config = getConfig();
   setConfig({
     ...config,
-    blockedDates: (config.blockedDates ?? []).filter(
-      b => !(b.userName === userName && b.date === date)
+    blockedPeriods: (config.blockedPeriods ?? []).filter(
+      p => !(p.userName === userName && p.from === from)
     ),
   });
 }

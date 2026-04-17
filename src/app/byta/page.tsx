@@ -3,10 +3,10 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CoverOption, SwapOption, SwapRecord, User } from '@/lib/types';
-import { formatSwedishDate, getShiftForDate, parseDate, SHIFT_INFO } from '@/lib/schedule';
+import { CoverOption, PaybackDay, SwapOption, SwapRecord, User } from '@/lib/types';
+import { formatDate, formatSwedishDate, getShiftForDate, parseDate, SHIFT_INFO } from '@/lib/schedule';
 import { findSwapOptions, findCoverOptions } from '@/lib/swapChecker';
-import { addSwapRecord, getBlockedDates, getConfig, getSwapRecords, getUser } from '@/lib/storage';
+import { addSwapRecord, getBlockedPeriods, getConfig, getSwapRecords, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
 import SwapCard from '@/components/SwapCard';
 
@@ -51,9 +51,9 @@ function BytaContent() {
       return;
     }
 
-    const blockedDates = getBlockedDates();
-    setSwapOptions(findSwapOptions(targetDate, u, config.users, cycleStart, blockedDates));
-    setCoverOptions(findCoverOptions(targetDate, u, config.users, cycleStart, 56, blockedDates));
+    const blockedPeriods = getBlockedPeriods();
+    setSwapOptions(findSwapOptions(targetDate, u, config.users, cycleStart, blockedPeriods));
+    setCoverOptions(findCoverOptions(targetDate, u, config.users, cycleStart, 62, blockedPeriods));
     setSwapRecords(getSwapRecords());
     setLoading(false);
   }, [datumParam]);
@@ -163,6 +163,7 @@ function BytaContent() {
                 Nedan visas vem som kan täcka ditt pass.
                 Tryck på en person för att se vilka dagar du kan jobba tillbaka —
                 dagar då du är ledig och de jobbar, minst 4 dagar från täckningsdagen.
+                Klicka <strong>Registrera</strong> på ett återpass för att spara arrangemanget i ditt schema.
                 <span className="block mt-1">
                   <strong>D+N-undantag:</strong> en kollega med D kan täcka ditt N-pass (och vice versa) –
                   märks med <span className="bg-orange-100 text-orange-700 px-1 rounded">D+N</span>.
@@ -174,7 +175,28 @@ function BytaContent() {
               ) : (
                 <div className="space-y-3">
                   {coverOptions.map((opt, i) => (
-                    <CoverCard key={i} option={opt} />
+                    <CoverCard
+                      key={i}
+                      option={opt}
+                      coverDate={date!}
+                      userGroup={user.group}
+                      swapRecords={swapRecords}
+                      onRegisterPayback={(pb) => {
+                        addSwapRecord({
+                          date: toLocalDateInput(date!),
+                          group: user.group,
+                          newShift: 'L',
+                          partnerName: opt.coverPerson.name,
+                        });
+                        addSwapRecord({
+                          date: toLocalDateInput(pb.date),
+                          group: user.group,
+                          newShift: pb.shiftType,
+                          partnerName: opt.coverPerson.name,
+                        });
+                        setSwapRecords(getSwapRecords());
+                      }}
+                    />
                   ))}
                 </div>
               )}
@@ -197,16 +219,25 @@ function BytaContent() {
                       key={i}
                       option={opt}
                       registered={swapRecords.some(
-                        s => date && s.date === toLocalDateInput(date) && s.group === user.group
+                        s => s.date === toLocalDateInput(opt.date) && s.group === user.group
                       )}
                       onRegister={() => {
-                        if (!date) return;
+                        // User gives away shift on opt.date (becomes L)
                         addSwapRecord({
-                          date: toLocalDateInput(date),
+                          date: toLocalDateInput(opt.date),
                           group: user.group,
-                          newShift: opt.partnerShift,
+                          newShift: 'L',
                           partnerName: opt.partnerName,
                         });
+                        // For cross-day swap, user also takes partner shift on partnerDate
+                        if (opt.dayOffset !== 0) {
+                          addSwapRecord({
+                            date: toLocalDateInput(opt.partnerDate),
+                            group: user.group,
+                            newShift: opt.partnerShift,
+                            partnerName: opt.partnerName,
+                          });
+                        }
                         setSwapRecords(getSwapRecords());
                       }}
                     />
@@ -228,10 +259,22 @@ const GROUP_BADGE: Record<number, string> = {
   4: 'bg-orange-100 text-orange-800',
 };
 
-function CoverCard({ option }: { option: CoverOption }) {
+interface CoverCardProps {
+  option: CoverOption;
+  coverDate: Date;
+  userGroup: number;
+  swapRecords: SwapRecord[];
+  onRegisterPayback: (pb: PaybackDay) => void;
+}
+
+function CoverCard({ option, coverDate, userGroup, swapRecords, onRegisterPayback }: CoverCardProps) {
   const [expanded, setExpanded] = useState(false);
   const validPaybacks = option.paybackOptions.filter(p => p.valid);
   const invalidPaybacks = option.paybackOptions.filter(p => !p.valid);
+
+  const coverRegistered = swapRecords.some(
+    s => s.date === toLocalDateInput(coverDate) && s.group === userGroup && s.partnerName === option.coverPerson.name
+  );
 
   const borderClass = option.canCover && validPaybacks.length > 0
     ? 'border-green-200 bg-green-50'
@@ -255,6 +298,11 @@ function CoverCard({ option }: { option: CoverOption }) {
               D+N
             </span>
           )}
+          {coverRegistered && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              Täckning registrerad ✓
+            </span>
+          )}
           {option.canCover ? (
             <span className="text-xs text-green-700 font-medium">Kan täcka</span>
           ) : (
@@ -276,7 +324,7 @@ function CoverCard({ option }: { option: CoverOption }) {
         <div className="border-t border-gray-200 bg-white p-4">
           {validPaybacks.length === 0 ? (
             <p className="text-xs text-gray-400">
-              Inga giltiga återpassdagar de närmaste 8 veckorna.
+              Inga giltiga återpassdagar de närmaste 2 månaderna.
             </p>
           ) : (
             <>
@@ -284,22 +332,37 @@ function CoverCard({ option }: { option: CoverOption }) {
                 Dagar du kan jobba tillbaka ({validPaybacks.length} st)
               </p>
               <div className="space-y-1.5">
-                {validPaybacks.map((pb, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2"
-                  >
-                    <span className="text-sm text-gray-700">{formatSwedishDate(pb.date)}</span>
-                    <div className="flex items-center gap-1.5">
-                      {pb.isDN && (
-                        <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
-                          D+N
-                        </span>
-                      )}
-                      <ShiftBadge type={pb.shiftType} size="sm" />
+                {validPaybacks.map((pb, i) => {
+                  const pbRegistered = swapRecords.some(
+                    s => s.date === toLocalDateInput(pb.date) && s.group === userGroup
+                  );
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2"
+                    >
+                      <span className="text-sm text-gray-700">{formatSwedishDate(pb.date)}</span>
+                      <div className="flex items-center gap-2">
+                        {pb.isDN && (
+                          <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
+                            D+N
+                          </span>
+                        )}
+                        <ShiftBadge type={pb.shiftType} size="sm" />
+                        {pbRegistered ? (
+                          <span className="text-xs text-green-700 font-medium whitespace-nowrap">Registrerat ✓</span>
+                        ) : (
+                          <button
+                            onClick={() => onRegisterPayback(pb)}
+                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 whitespace-nowrap"
+                          >
+                            Registrera
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {invalidPaybacks.length > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
