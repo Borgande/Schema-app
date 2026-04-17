@@ -14,6 +14,11 @@ import {
 import { getConfig, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
 
+const MONTHS_SV = [
+  'Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni',
+  'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December',
+];
+
 function isSameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -25,17 +30,33 @@ function isSameDay(a: Date, b: Date): boolean {
 export default function MittSchemaPage() {
   const [user, setUser] = useState<User | null>(null);
   const [schedule, setSchedule] = useState<ScheduledDay[]>([]);
+  const [nextShiftDay, setNextShiftDay] = useState<ScheduledDay | null>(null);
   const [today] = useState(() => new Date());
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  const displayYear = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1).getFullYear();
+  const displayMonth = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1).getMonth();
 
   useEffect(() => {
     const u = getUser();
     setUser(u);
     if (!u) return;
+
     const config = getConfig();
     const cycleStart = parseDate(config.cycleStartDate);
-    // Visa 28 dagar från idag
-    setSchedule(getScheduleRange(today, 28, cycleStart));
-  }, [today]);
+
+    // Månadsschema
+    const firstDay = new Date(displayYear, displayMonth, 1);
+    const daysInMonth = new Date(displayYear, displayMonth + 1, 0).getDate();
+    setSchedule(getScheduleRange(firstDay, daysInMonth, cycleStart));
+
+    // Nästa pass: sök 28 dagar framåt från idag (oavsett visad månad)
+    const upcoming = getScheduleRange(today, 28, cycleStart);
+    const next = upcoming.find(
+      (d) => d.shifts[u.group] !== 'L' && (d.date > today || isSameDay(d.date, today))
+    );
+    setNextShiftDay(next ?? null);
+  }, [today, displayYear, displayMonth]);
 
   if (!user) {
     return (
@@ -50,11 +71,6 @@ export default function MittSchemaPage() {
 
   const myDays = schedule.filter((d) => d.shifts[user.group] !== 'L');
 
-  // Nästa pass
-  const nextShiftDay = schedule.find(
-    (d) => d.shifts[user.group] !== 'L' && (d.date >= today || isSameDay(d.date, today))
-  );
-
   return (
     <div>
       <h1 className="text-xl font-bold text-gray-900 mb-1">Mitt schema</h1>
@@ -62,8 +78,8 @@ export default function MittSchemaPage() {
         {user.name} · Grupp {user.group}
       </p>
 
-      {/* Nästa pass-kort */}
-      {nextShiftDay && (
+      {/* Nästa pass-kort – visas alltid baserat på dagens datum */}
+      {nextShiftDay && monthOffset === 0 && (
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
             Nästa pass
@@ -90,13 +106,37 @@ export default function MittSchemaPage() {
         </div>
       )}
 
-      {/* Lista alla kommande arbetspass */}
-      <h2 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-        Arbetspass de närmaste 28 dagarna
-      </h2>
+      {/* Månadsnavigation */}
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-base font-semibold text-gray-800">
+          {MONTHS_SV[displayMonth]} {displayYear}
+        </h2>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMonthOffset((o) => o - 1)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            ←
+          </button>
+          <button
+            onClick={() => setMonthOffset(0)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            Idag
+          </button>
+          <button
+            onClick={() => setMonthOffset((o) => o + 1)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            →
+          </button>
+        </div>
+      </div>
+
+      {/* Lista arbetspass för månaden */}
       <div className="space-y-2">
         {myDays.length === 0 && (
-          <p className="text-gray-400 text-sm">Inga arbetspass de närmaste 28 dagarna.</p>
+          <p className="text-gray-400 text-sm">Inga arbetspass denna månad.</p>
         )}
         {myDays.map((day, idx) => {
           const shift = day.shifts[user.group];
@@ -133,7 +173,7 @@ export default function MittSchemaPage() {
         })}
       </div>
 
-      {/* Statistik */}
+      {/* Statistik för månaden */}
       <div className="mt-6 grid grid-cols-3 gap-3">
         {(['D', 'N', 'X'] as const).map((type) => {
           const count = schedule.filter((d) => d.shifts[user.group] === type).length;

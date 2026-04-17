@@ -10,7 +10,7 @@ import { getConfig, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
 import SwapCard from '@/components/SwapCard';
 
-type Mode = 'byta' | 'tacka';
+type Mode = 'tacka' | 'byta';
 
 /** Formaterar ett Date-objekt till YYYY-MM-DD i lokal tid (undviker UTC-förskjutning). */
 function toLocalDateInput(d: Date): string {
@@ -27,7 +27,7 @@ function BytaContent() {
   const [swapOptions, setSwapOptions] = useState<SwapOption[]>([]);
   const [coverOptions, setCoverOptions] = useState<CoverOption[]>([]);
   const [date, setDate] = useState<Date | null>(null);
-  const [mode, setMode] = useState<Mode>('byta');
+  const [mode, setMode] = useState<Mode>('tacka');
   const [loading, setLoading] = useState(true);
 
   const datumParam = searchParams.get('datum');
@@ -117,23 +117,8 @@ function BytaContent() {
 
       {myShift !== 'L' && !loading && (
         <>
-          {/* Flikar */}
+          {/* Flikar – Täcka först */}
           <div className="flex border-b border-gray-200 mb-5">
-            <button
-              onClick={() => setMode('byta')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                mode === 'byta'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Byta pass
-              {validSwaps > 0 && (
-                <span className="ml-2 bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded-full">
-                  {validSwaps}
-                </span>
-              )}
-            </button>
             <button
               onClick={() => setMode('tacka')}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -149,51 +134,22 @@ function BytaContent() {
                 </span>
               )}
             </button>
-          </div>
-
-          {/* ── BYTA-FLIKEN ── */}
-          {mode === 'byta' && (
-            <div>
-              <div className="flex gap-3 mb-4">
-                <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                  <span className="text-green-600 font-bold">{validSwaps}</span>
-                  <span className="text-xs text-green-700">möjliga byten</span>
-                </div>
-                {swapOptions.filter(o => !o.valid).length > 0 && (
-                  <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                    <span className="text-red-600 font-bold">{swapOptions.filter(o => !o.valid).length}</span>
-                    <span className="text-xs text-red-700">ej tillåtna</span>
-                  </div>
-                )}
-              </div>
-
-              {swapOptions.length === 0 ? (
-                <EmptyUsersMessage />
-              ) : (
-                <div className="space-y-3">
-                  {validSwaps > 0 && (
-                    <>
-                      <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Möjliga byten</h2>
-                      {swapOptions.filter(o => o.valid).map((opt, i) => (
-                        <SwapCard key={i} option={opt} />
-                      ))}
-                    </>
-                  )}
-                  {swapOptions.filter(o => !o.valid).length > 0 && (
-                    <>
-                      <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-4">
-                        Ej tillåtna (bryter 11h-regeln)
-                      </h2>
-                      {swapOptions.filter(o => !o.valid).map((opt, i) => (
-                        <SwapCard key={i} option={opt} />
-                      ))}
-                    </>
-                  )}
-                </div>
+            <button
+              onClick={() => setMode('byta')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                mode === 'byta'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Byta pass
+              {validSwaps > 0 && (
+                <span className="ml-2 bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded-full">
+                  {validSwaps}
+                </span>
               )}
-              <RestRuleInfo />
-            </div>
-          )}
+            </button>
+          </div>
 
           {/* ── TÄCKA-FLIKEN ── */}
           {mode === 'tacka' && (
@@ -201,7 +157,7 @@ function BytaContent() {
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-700">
                 <strong>Så fungerar det:</strong> Du vill ha{' '}
                 {date ? formatSwedishDate(date) : 'detta datum'} ledigt.
-                Nedan visas vem som kan täcka ditt pass (de är lediga den dagen, eller jobbar D+N-undantag).
+                Nedan visas vem som kan täcka ditt pass.
                 Tryck på en person för att se vilka dagar du kan jobba tillbaka —
                 dagar då du är ledig och de jobbar, minst 4 dagar från täckningsdagen.
                 <span className="block mt-1">
@@ -219,7 +175,25 @@ function BytaContent() {
                   ))}
                 </div>
               )}
-              <RestRuleInfo />
+            </div>
+          )}
+
+          {/* ── BYTA-FLIKEN ── */}
+          {mode === 'byta' && (
+            <div>
+              {swapOptions.length === 0 ? (
+                <EmptyUsersMessage />
+              ) : validSwaps === 0 ? (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+                  <p className="text-gray-500 text-sm">Inga möjliga byten detta datum – viloreglerna tillåter det inte.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {swapOptions.filter(o => o.valid).map((opt, i) => (
+                    <SwapCard key={i} option={opt} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>
@@ -328,25 +302,6 @@ function EmptyUsersMessage() {
       <Link href="/installningar" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
         Lägg till kollegor i Inställningar →
       </Link>
-    </div>
-  );
-}
-
-function RestRuleInfo() {
-  return (
-    <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-      <h3 className="text-sm font-semibold text-blue-800 mb-2">Viloregler (dygnsbryt 20:00)</h3>
-      <ul className="text-xs text-blue-700 space-y-1">
-        <li><span className="font-medium">Efter dagpass:</span> minst 11h vila</li>
-        <li><span className="font-medium">Efter nattpass:</span> minst 14,5h sammanhängande vila</li>
-        <li><span className="font-medium">Efter dygnpass:</span> minst 24h sammanhängande vila</li>
-        <li className="pt-1 text-blue-600">Varje dygn (20:00–20:00) ska innehålla minst 11h vila.</li>
-        <li className="text-blue-600">Återpass måste ligga minst 4 dagar från täckningsdagen.</li>
-        <li className="pt-1 border-t border-blue-200 text-orange-700">
-          <span className="font-medium">D+N-undantag:</span> dagpass direkt följt av nattpass (0h vila) är tillåtet –
-          kräver minst 24h sammanhängande vila efteråt.
-        </li>
-      </ul>
     </div>
   );
 }
