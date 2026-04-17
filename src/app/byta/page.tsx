@@ -3,10 +3,10 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CoverOption, SwapOption, User } from '@/lib/types';
+import { CoverOption, SwapOption, SwapRecord, User } from '@/lib/types';
 import { formatSwedishDate, getShiftForDate, parseDate, SHIFT_INFO } from '@/lib/schedule';
 import { findSwapOptions, findCoverOptions } from '@/lib/swapChecker';
-import { getConfig, getUser } from '@/lib/storage';
+import { addSwapRecord, getBlockedDates, getConfig, getSwapRecords, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
 import SwapCard from '@/components/SwapCard';
 
@@ -26,6 +26,7 @@ function BytaContent() {
   const [user, setUser] = useState<User | null>(null);
   const [swapOptions, setSwapOptions] = useState<SwapOption[]>([]);
   const [coverOptions, setCoverOptions] = useState<CoverOption[]>([]);
+  const [swapRecords, setSwapRecords] = useState<SwapRecord[]>([]);
   const [date, setDate] = useState<Date | null>(null);
   const [mode, setMode] = useState<Mode>('tacka');
   const [loading, setLoading] = useState(true);
@@ -50,8 +51,10 @@ function BytaContent() {
       return;
     }
 
-    setSwapOptions(findSwapOptions(targetDate, u, config.users, cycleStart));
-    setCoverOptions(findCoverOptions(targetDate, u, config.users, cycleStart));
+    const blockedDates = getBlockedDates();
+    setSwapOptions(findSwapOptions(targetDate, u, config.users, cycleStart, blockedDates));
+    setCoverOptions(findCoverOptions(targetDate, u, config.users, cycleStart, 56, blockedDates));
+    setSwapRecords(getSwapRecords());
     setLoading(false);
   }, [datumParam]);
 
@@ -190,7 +193,23 @@ function BytaContent() {
               ) : (
                 <div className="space-y-3">
                   {swapOptions.filter(o => o.valid).map((opt, i) => (
-                    <SwapCard key={i} option={opt} />
+                    <SwapCard
+                      key={i}
+                      option={opt}
+                      registered={swapRecords.some(
+                        s => date && s.date === toLocalDateInput(date) && s.group === user.group
+                      )}
+                      onRegister={() => {
+                        if (!date) return;
+                        addSwapRecord({
+                          date: toLocalDateInput(date),
+                          group: user.group,
+                          newShift: opt.partnerShift,
+                          partnerName: opt.partnerName,
+                        });
+                        setSwapRecords(getSwapRecords());
+                      }}
+                    />
                   ))}
                 </div>
               )}

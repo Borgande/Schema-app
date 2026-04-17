@@ -24,11 +24,25 @@ export interface User {
   group: GroupNumber;
 }
 
+export interface BlockedDate {
+  userName: string;
+  date: string; // YYYY-MM-DD
+}
+
+export interface SwapRecord {
+  date: string; // YYYY-MM-DD
+  group: GroupNumber;
+  newShift: ShiftType;
+  partnerName: string;
+}
+
 export interface AppConfig {
   /** ISO-datum för dag 1 (index 0) i cykeln för grupp 1 */
   cycleStartDate: string;
   /** Kända användare i appen */
   users: User[];
+  blockedDates?: BlockedDate[];
+  swapRecords?: SwapRecord[];
 }
 
 export interface SwapOption {

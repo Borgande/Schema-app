@@ -4,6 +4,8 @@ import { SHIFT_INFO } from '@/lib/schedule';
 
 interface SwapCardProps {
   option: SwapOption;
+  onRegister?: () => void;
+  registered?: boolean;
 }
 
 const GROUP_LABELS: Record<number, string> = {
@@ -20,7 +22,7 @@ const GROUP_BADGE: Record<number, string> = {
   4: 'bg-orange-100 text-orange-800',
 };
 
-export default function SwapCard({ option }: SwapCardProps) {
+export default function SwapCard({ option, onRegister, registered }: SwapCardProps) {
   const borderClass = option.valid
     ? 'border-green-200 bg-green-50'
     : 'border-red-200 bg-red-50';
@@ -64,9 +66,21 @@ export default function SwapCard({ option }: SwapCardProps) {
       )}
 
       {option.valid && (
-        <p className="mt-2 text-xs text-green-700">
-          Bytet uppfyller 11h-viloregeln för båda parter.
-        </p>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <p className="text-xs text-green-700">
+            Bytet uppfyller 11h-viloregeln för båda parter.
+          </p>
+          {registered ? (
+            <span className="text-xs text-green-700 font-medium shrink-0">Registrerat ✓</span>
+          ) : onRegister ? (
+            <button
+              onClick={onRegister}
+              className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 shrink-0"
+            >
+              Registrera byte
+            </button>
+          ) : null}
+        </div>
       )}
     </div>
   );

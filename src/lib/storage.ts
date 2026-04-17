@@ -1,4 +1,4 @@
-import { AppConfig, User } from './types';
+import { AppConfig, BlockedDate, GroupNumber, SwapRecord, User } from './types';
 
 const USER_KEY = 'schema_user';
 const CONFIG_KEY = 'schema_config';
@@ -55,4 +55,50 @@ export function addUser(user: User): void {
     config.users = [...config.users, user];
     setConfig(config);
   }
+}
+
+export function getBlockedDates(): BlockedDate[] {
+  return getConfig().blockedDates ?? [];
+}
+
+export function addBlockedDate(entry: BlockedDate): void {
+  const config = getConfig();
+  const existing = config.blockedDates ?? [];
+  const alreadyExists = existing.some(b => b.userName === entry.userName && b.date === entry.date);
+  if (!alreadyExists) {
+    setConfig({ ...config, blockedDates: [...existing, entry] });
+  }
+}
+
+export function removeBlockedDate(userName: string, date: string): void {
+  const config = getConfig();
+  setConfig({
+    ...config,
+    blockedDates: (config.blockedDates ?? []).filter(
+      b => !(b.userName === userName && b.date === date)
+    ),
+  });
+}
+
+export function getSwapRecords(): SwapRecord[] {
+  return getConfig().swapRecords ?? [];
+}
+
+export function addSwapRecord(record: SwapRecord): void {
+  const config = getConfig();
+  const existing = config.swapRecords ?? [];
+  const alreadyExists = existing.some(s => s.date === record.date && s.group === record.group);
+  if (!alreadyExists) {
+    setConfig({ ...config, swapRecords: [...existing, record] });
+  }
+}
+
+export function removeSwapRecord(date: string, group: GroupNumber): void {
+  const config = getConfig();
+  setConfig({
+    ...config,
+    swapRecords: (config.swapRecords ?? []).filter(
+      s => !(s.date === date && s.group === group)
+    ),
+  });
 }
