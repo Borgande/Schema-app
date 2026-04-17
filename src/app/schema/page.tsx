@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { GroupNumber, ScheduledDay, User } from '@/lib/types';
+import { GroupNumber, ScheduledDay, ShiftType, SwapRecord, User } from '@/lib/types';
 import { getScheduleRange, formatSwedishDate, formatDate, isWeekend, parseDate } from '@/lib/schedule';
-import { getConfig, getUser } from '@/lib/storage';
+import { getConfig, getSwapRecords, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
 
 const GROUP_HEADER: Record<GroupNumber, string> = {
@@ -16,6 +16,11 @@ const GROUP_HEADER: Record<GroupNumber, string> = {
 
 const GROUPS: GroupNumber[] = [1, 2, 3, 4];
 
+const MONTHS_SV = [
+  'Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni',
+  'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December',
+];
+
 function isSameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -24,60 +29,64 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
+function getEffectiveShift(day: ScheduledDay, group: GroupNumber, records: SwapRecord[]): ShiftType {
+  const swap = records.find(s => s.date === formatDate(day.date) && s.group === group);
+  return swap ? swap.newShift : day.shifts[group];
+}
+
 export default function SchemaPage() {
   const [schedule, setSchedule] = useState<ScheduledDay[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [swapRecords, setSwapRecords] = useState<SwapRecord[]>([]);
   const [today] = useState(() => new Date());
-  const [startOffset, setStartOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  const displayYear = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1).getFullYear();
+  const displayMonth = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1).getMonth();
 
   useEffect(() => {
     const u = getUser();
     setUser(u);
     const config = getConfig();
     const cycleStart = parseDate(config.cycleStartDate);
-    // Visa från idag, 28 dagar
-    const from = new Date(today);
-    from.setDate(from.getDate() + startOffset * 28);
-    setSchedule(getScheduleRange(from, 28, cycleStart));
-  }, [today, startOffset]);
+    const firstDay = new Date(displayYear, displayMonth, 1);
+    const daysInMonth = new Date(displayYear, displayMonth + 1, 0).getDate();
+    setSchedule(getScheduleRange(firstDay, daysInMonth, cycleStart));
+    setSwapRecords(getSwapRecords());
+  }, [displayYear, displayMonth]);
 
   if (!schedule.length) {
     return <div className="text-gray-400 text-sm text-center py-12">Laddar schema...</div>;
   }
 
-  // Gruppa i veckor (7 dagar per rad)
-  const weeks: ScheduledDay[][] = [];
-  for (let i = 0; i < schedule.length; i += 7) {
-    weeks.push(schedule.slice(i, i + 7));
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Schema – alla grupper</h1>
+        <h1 className="text-xl font-bold text-gray-900">
+          {MONTHS_SV[displayMonth]} {displayYear}
+        </h1>
         <div className="flex gap-2">
           <button
-            onClick={() => setStartOffset((o) => o - 1)}
+            onClick={() => setMonthOffset((o) => o - 1)}
             className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
           >
-            ← Föregående
+            ←
           </button>
           <button
-            onClick={() => setStartOffset(0)}
+            onClick={() => setMonthOffset(0)}
             className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
           >
             Idag
           </button>
           <button
-            onClick={() => setStartOffset((o) => o + 1)}
+            onClick={() => setMonthOffset((o) => o + 1)}
             className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
           >
-            Nästa →
+            →
           </button>
         </div>
       </div>
 
-      {/* Grupprubrik */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white">
         <table className="w-full text-sm">
           <thead>
@@ -119,14 +128,11 @@ export default function SchemaPage() {
                     )}
                   </td>
                   {GROUPS.map((g) => {
-                    const shift = day.shifts[g];
-                    const isMe = user?.group === g;
+                    const shift = getEffectiveShift(day, g, swapRecords);
                     return (
                       <td
                         key={g}
-                        className={`px-2 py-2 text-center border-r last:border-r-0 ${
-                          isMe ? 'bg-opacity-30' : ''
-                        }`}
+                        className="px-2 py-2 text-center border-r last:border-r-0"
                       >
                         {shift !== 'L' ? (
                           <Link

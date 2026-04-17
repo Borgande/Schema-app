@@ -1,5 +1,5 @@
-import { CoverOption, GroupNumber, NearbyShift, PaybackDay, ShiftType, SwapOption, User } from './types';
-import { getShiftEnd, getShiftForDate, getShiftStart } from './schedule';
+import { BlockedDate, CoverOption, GroupNumber, NearbyShift, PaybackDay, ShiftType, SwapOption, User } from './types';
+import { formatDate, getShiftEnd, getShiftForDate, getShiftStart } from './schedule';
 
 const H = 60 * 60 * 1000; // 1 timme i ms
 
@@ -177,7 +177,8 @@ export function findSwapOptions(
   swapDate: Date,
   user: User,
   allUsers: User[],
-  cycleStart: Date
+  cycleStart: Date,
+  blockedDates: BlockedDate[] = []
 ): SwapOption[] {
   const userShift = getShiftForDate(swapDate, user.group, cycleStart);
 
@@ -189,6 +190,9 @@ export function findSwapOptions(
   for (const partner of allUsers) {
     // Hoppa över sig själv och sin egen grupp
     if (partner.name === user.name || partner.group === user.group) continue;
+
+    // Hoppa över blockerade partners
+    if (blockedDates.some(b => b.userName === partner.name && b.date === formatDate(swapDate))) continue;
 
     const partnerShift = getShiftForDate(swapDate, partner.group, cycleStart);
 
@@ -244,7 +248,8 @@ export function findCoverOptions(
   user: User,
   allUsers: User[],
   cycleStart: Date,
-  lookaheadDays = 56
+  lookaheadDays = 56,
+  blockedDates: BlockedDate[] = []
 ): CoverOption[] {
   const userShift = getShiftForDate(coverDate, user.group, cycleStart);
 
@@ -258,6 +263,12 @@ export function findCoverOptions(
 
   for (const candidate of allUsers) {
     if (candidate.name === user.name || candidate.group === user.group) continue;
+
+    // Blockerad kandidat – kan inte täcka
+    if (blockedDates.some(b => b.userName === candidate.name && b.date === formatDate(coverDate))) {
+      options.push({ coverPerson: candidate, canCover: false, coverReason: 'Inte tillgänglig', paybackOptions: [], isDN: false });
+      continue;
+    }
 
     const candidateShiftOnCoverDay = getShiftForDate(coverDate, candidate.group, cycleStart);
 
@@ -337,6 +348,9 @@ export function findCoverOptions(
       const candidateDayShift = getShiftForDate(day, candidate.group, cycleStart);
 
       if (candidateDayShift === 'L') continue;
+
+      // Hoppa över om användaren har blockerat denna dag som återpassdag
+      if (blockedDates.some(b => b.userName === user.name && b.date === formatDate(day))) continue;
 
       // D+N-återpass: användaren har D och återpasset är N (eller vice versa)
       const isDNPayback =

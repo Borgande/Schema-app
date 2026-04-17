@@ -2,17 +2,30 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ScheduledDay, User } from '@/lib/types';
+import { BlockedDate, ScheduledDay, SwapRecord, User } from '@/lib/types';
 import {
   getScheduleRange,
   formatSwedishDate,
   formatDate,
+  getShiftForDate,
   isWeekend,
   parseDate,
   SHIFT_INFO,
 } from '@/lib/schedule';
-import { getConfig, getUser } from '@/lib/storage';
+import {
+  addBlockedDate,
+  getBlockedDates,
+  getConfig,
+  getSwapRecords,
+  getUser,
+  removeBlockedDate,
+} from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
+
+const MONTHS_SV = [
+  'Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni',
+  'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December',
+];
 
 function isSameDay(a: Date, b: Date): boolean {
   return (
@@ -25,17 +38,39 @@ function isSameDay(a: Date, b: Date): boolean {
 export default function MittSchemaPage() {
   const [user, setUser] = useState<User | null>(null);
   const [schedule, setSchedule] = useState<ScheduledDay[]>([]);
+  const [nextShiftDay, setNextShiftDay] = useState<ScheduledDay | null>(null);
+  const [swapRecords, setSwapRecords] = useState<SwapRecord[]>([]);
+  const [myBlocks, setMyBlocks] = useState<BlockedDate[]>([]);
+  const [blockInput, setBlockInput] = useState('');
+  const [blockError, setBlockError] = useState('');
   const [today] = useState(() => new Date());
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  const displayYear = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1).getFullYear();
+  const displayMonth = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1).getMonth();
 
   useEffect(() => {
     const u = getUser();
     setUser(u);
     if (!u) return;
+
     const config = getConfig();
     const cycleStart = parseDate(config.cycleStartDate);
-    // Visa 28 dagar från idag
-    setSchedule(getScheduleRange(today, 28, cycleStart));
-  }, [today]);
+
+    // Månadsschema
+    const firstDay = new Date(displayYear, displayMonth, 1);
+    const daysInMonth = new Date(displayYear, displayMonth + 1, 0).getDate();
+    setSchedule(getScheduleRange(firstDay, daysInMonth, cycleStart));
+
+    // Nästa pass: sök 28 dagar framåt från idag (oavsett visad månad)
+    const upcoming = getScheduleRange(today, 28, cycleStart);
+    const next = upcoming.find(
+      (d) => d.shifts[u.group] !== 'L' && (d.date > today || isSameDay(d.date, today))
+    );
+    setNextShiftDay(next ?? null);
+    setSwapRecords(getSwapRecords());
+    setMyBlocks(getBlockedDates().filter(b => b.userName === u.name));
+  }, [today, displayYear, displayMonth]);
 
   if (!user) {
     return (
@@ -48,12 +83,24 @@ export default function MittSchemaPage() {
     );
   }
 
-  const myDays = schedule.filter((d) => d.shifts[user.group] !== 'L');
+  const config = getConfig();
+  const cycleStart = parseDate(config.cycleStartDate);
 
-  // Nästa pass
-  const nextShiftDay = schedule.find(
-    (d) => d.shifts[user.group] !== 'L' && (d.date >= today || isSameDay(d.date, today))
-  );
+  function handleAddBlock() {
+    if (!blockInput || !user) return;
+    const blockDate = parseDate(blockInput);
+    const shift = getShiftForDate(blockDate, user.group, cycleStart);
+    if (shift !== 'L') {
+      setBlockError('Du kan bara blockera lediga dagar (L).');
+      return;
+    }
+    addBlockedDate({ userName: user.name, date: blockInput });
+    setMyBlocks(getBlockedDates().filter(b => b.userName === user.name));
+    setBlockInput('');
+    setBlockError('');
+  }
+
+  const myDays = schedule.filter((d) => d.shifts[user.group] !== 'L');
 
   return (
     <div>
@@ -62,8 +109,8 @@ export default function MittSchemaPage() {
         {user.name} · Grupp {user.group}
       </p>
 
-      {/* Nästa pass-kort */}
-      {nextShiftDay && (
+      {/* Nästa pass-kort – visas alltid baserat på dagens datum */}
+      {nextShiftDay && monthOffset === 0 && (
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
             Nästa pass
@@ -90,16 +137,42 @@ export default function MittSchemaPage() {
         </div>
       )}
 
-      {/* Lista alla kommande arbetspass */}
-      <h2 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-        Arbetspass de närmaste 28 dagarna
-      </h2>
+      {/* Månadsnavigation */}
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-base font-semibold text-gray-800">
+          {MONTHS_SV[displayMonth]} {displayYear}
+        </h2>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMonthOffset((o) => o - 1)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            ←
+          </button>
+          <button
+            onClick={() => setMonthOffset(0)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            Idag
+          </button>
+          <button
+            onClick={() => setMonthOffset((o) => o + 1)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            →
+          </button>
+        </div>
+      </div>
+
+      {/* Lista arbetspass för månaden */}
       <div className="space-y-2">
         {myDays.length === 0 && (
-          <p className="text-gray-400 text-sm">Inga arbetspass de närmaste 28 dagarna.</p>
+          <p className="text-gray-400 text-sm">Inga arbetspass denna månad.</p>
         )}
         {myDays.map((day, idx) => {
-          const shift = day.shifts[user.group];
+          const baseShift = day.shifts[user.group];
+          const swapRec = swapRecords.find(s => s.date === formatDate(day.date) && s.group === user.group);
+          const shift = swapRec ? swapRec.newShift : baseShift;
           const isToday = isSameDay(day.date, today);
           const weekend = isWeekend(day.date);
 
@@ -115,6 +188,9 @@ export default function MittSchemaPage() {
                   {formatSwedishDate(day.date)}
                   {isToday && (
                     <span className="ml-2 text-xs text-yellow-600 font-normal">idag</span>
+                  )}
+                  {swapRec && (
+                    <span className="ml-2 text-xs text-blue-600 font-normal">bytt</span>
                   )}
                 </div>
                 <div className="text-xs text-gray-400">{SHIFT_INFO[shift].duration}</div>
@@ -133,7 +209,7 @@ export default function MittSchemaPage() {
         })}
       </div>
 
-      {/* Statistik */}
+      {/* Statistik för månaden */}
       <div className="mt-6 grid grid-cols-3 gap-3">
         {(['D', 'N', 'X'] as const).map((type) => {
           const count = schedule.filter((d) => d.shifts[user.group] === type).length;
@@ -145,6 +221,51 @@ export default function MittSchemaPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* Blockerade lediga dagar */}
+      <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">Otillgängliga lediga dagar</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Markera lediga dagar du inte kan jobba. Kollegor ser dem inte som bytesalternativ.
+        </p>
+        <div className="flex gap-2 mb-2 flex-wrap">
+          <input
+            type="date"
+            value={blockInput}
+            onChange={e => { setBlockInput(e.target.value); setBlockError(''); }}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+          <button
+            onClick={handleAddBlock}
+            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Markera otillgänglig
+          </button>
+        </div>
+        {blockError && (
+          <p className="text-xs text-red-600 mb-2">{blockError}</p>
+        )}
+        {myBlocks.length === 0 ? (
+          <p className="text-xs text-gray-400">Inga blockerade dagar registrerade.</p>
+        ) : (
+          <div className="space-y-1.5 mt-2">
+            {myBlocks.map(b => (
+              <div key={b.date} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <span className="text-sm text-gray-700">{formatSwedishDate(parseDate(b.date))}</span>
+                <button
+                  onClick={() => {
+                    removeBlockedDate(user.name, b.date);
+                    setMyBlocks(getBlockedDates().filter(bl => bl.userName === user.name));
+                  }}
+                  className="text-xs text-red-600 hover:underline"
+                >
+                  Ta bort
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
