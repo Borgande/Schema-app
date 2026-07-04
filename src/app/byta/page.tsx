@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CoverOption, PaybackDay, SwapOption, SwapRecord, User } from '@/lib/types';
-import { formatDate, formatSwedishDate, getShiftForDate, parseDate, SHIFT_INFO } from '@/lib/schedule';
+import { formatSwedishDate, getShiftForDate, parseDate, SHIFT_INFO } from '@/lib/schedule';
 import { findSwapOptions, findCoverOptions } from '@/lib/swapChecker';
 import { addSwapRecord, getBlockedPeriods, getConfig, getSwapRecords, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';

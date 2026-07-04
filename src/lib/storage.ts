@@ -5,9 +5,9 @@ const CONFIG_KEY = 'schema_config';
 
 /** Standardkonfiguration – justera cycleStartDate till ett känt referensdatum */
 export const DEFAULT_CONFIG: AppConfig = {
-  // 2026-01-05 är en måndag som fungerar som startpunkt.
+  // 2026-08-24 är måndagen då det nya schemat börjar gälla (Grupp 2 jobbar D).
   // Ändra detta i Inställningar om det inte stämmer.
-  cycleStartDate: '2026-01-05',
+  cycleStartDate: '2026-08-24',
   users: [],
 };
 
