@@ -6,9 +6,10 @@ import { GroupNumber, ScheduledDay, ShiftInfo, ShiftType } from './types';
  * Schemaordning: 1 → 3 → 2 → 4 (varje grupp startar sin cykel 7 dagar senare)
  */
 export const BASE_PATTERN: ShiftType[] = [
-  'N','L','L','D','N','L','X','L','L','D',
-  'N','L','L','L','D','N','L','L','D','X',
-  'L','L','D','N','L','L','L','L'
+  'N','L','L','D','L','X','L',   // V1: Mån=N, Tor=D, Lör=X
+  'L','D','N','L','L','L','L',   // V2: Tis=D, Ons=N
+  'D','N','L','L','X','L','X',   // V3: Mån=D, Tis=N, Fre=X, Sön=X
+  'L','L','D','N','L','L','L',   // V4: Ons=D, Tor=N
 ];
 
 /**
