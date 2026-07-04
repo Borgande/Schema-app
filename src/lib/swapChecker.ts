@@ -1,4 +1,4 @@
-import { BlockedDate, CoverOption, GroupNumber, NearbyShift, PaybackDay, ShiftType, SwapOption, User } from './types';
+import { BlockedPeriod, CoverOption, GroupNumber, NearbyShift, PaybackDay, ShiftType, SwapOption, User } from './types';
 import { formatDate, getShiftEnd, getShiftForDate, getShiftStart } from './schedule';
 
 const H = 60 * 60 * 1000; // 1 timme i ms
@@ -55,6 +55,12 @@ export function restLabel(shiftType: ShiftType, isDN = false): string {
   }
 }
 
+function isSameDayLocal(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+}
+
 /**
  * Söker bakåt i schemat och returnerar närmaste föregående arbetspass (icke-L).
  * Börjar söka från dagen FÖRE det angivna datumet.
@@ -93,6 +99,42 @@ export function findNextShift(
     if (type !== 'L') {
       return { date: d, type };
     }
+  }
+  return null;
+}
+
+/** findPrevShift som hoppar över en specifik dag (används vid korsdag-byten). */
+function findPrevShiftSkipping(
+  date: Date,
+  group: GroupNumber,
+  cycleStart: Date,
+  skip: Date,
+  maxDays = 14
+): NearbyShift | null {
+  for (let i = 1; i <= maxDays; i++) {
+    const d = new Date(date);
+    d.setDate(d.getDate() - i);
+    if (isSameDayLocal(d, skip)) continue;
+    const type = getShiftForDate(d, group, cycleStart);
+    if (type !== 'L') return { date: d, type };
+  }
+  return null;
+}
+
+/** findNextShift som hoppar över en specifik dag (används vid korsdag-byten). */
+function findNextShiftSkipping(
+  date: Date,
+  group: GroupNumber,
+  cycleStart: Date,
+  skip: Date,
+  maxDays = 14
+): NearbyShift | null {
+  for (let i = 1; i <= maxDays; i++) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + i);
+    if (isSameDayLocal(d, skip)) continue;
+    const type = getShiftForDate(d, group, cycleStart);
+    if (type !== 'L') return { date: d, type };
   }
   return null;
 }
@@ -170,59 +212,129 @@ export function checkSwapCompatibility(
 }
 
 /**
+ * Kontrollerar viloregeln för ett korsdag-byte:
+ * Användare ger bort userShift på userDate och tar partnerShift på partnerDate.
+ * Partner ger bort partnerShift på partnerDate och tar userShift på userDate.
+ */
+function checkCrossDaySwapCompatibility(
+  userDate: Date,
+  userGroup: GroupNumber,
+  userShift: ShiftType,
+  partnerDate: Date,
+  partnerGroup: GroupNumber,
+  partnerShift: ShiftType,
+  cycleStart: Date
+): { valid: boolean; reason?: string } {
+  // Användare tar partnerShift på partnerDate (userDate blir fri)
+  const newUserStart = getShiftStart(partnerDate, partnerShift);
+  const newUserEnd = getShiftEnd(partnerDate, partnerShift);
+
+  if (newUserStart) {
+    const userPrev = findPrevShiftSkipping(partnerDate, userGroup, cycleStart, userDate);
+    if (userPrev) {
+      const prevEnd = getShiftEnd(userPrev.date, userPrev.type);
+      if (prevEnd && !hasEnoughRest(prevEnd, newUserStart, userPrev.type, partnerShift)) {
+        return { valid: false, reason: `Du har för lite vila innan det nya passet (krav: ${restLabel(userPrev.type)}).` };
+      }
+    }
+  }
+  if (newUserEnd) {
+    const userNext = findNextShiftSkipping(partnerDate, userGroup, cycleStart, userDate);
+    if (userNext) {
+      const nextStart = getShiftStart(userNext.date, userNext.type);
+      if (nextStart && !hasEnoughRest(newUserEnd, nextStart, partnerShift)) {
+        return { valid: false, reason: `Du har för lite vila efter det nya passet (krav: ${restLabel(partnerShift)}).` };
+      }
+    }
+  }
+
+  // Partner tar userShift på userDate (partnerDate blir fri)
+  const newPartnerStart = getShiftStart(userDate, userShift);
+  const newPartnerEnd = getShiftEnd(userDate, userShift);
+
+  if (newPartnerStart) {
+    const partnerPrev = findPrevShiftSkipping(userDate, partnerGroup, cycleStart, partnerDate);
+    if (partnerPrev) {
+      const prevEnd = getShiftEnd(partnerPrev.date, partnerPrev.type);
+      if (prevEnd && !hasEnoughRest(prevEnd, newPartnerStart, partnerPrev.type, userShift)) {
+        return { valid: false, reason: `Partnern har för lite vila innan det nya passet (krav: ${restLabel(partnerPrev.type)}).` };
+      }
+    }
+  }
+  if (newPartnerEnd) {
+    const partnerNext = findNextShiftSkipping(userDate, partnerGroup, cycleStart, partnerDate);
+    if (partnerNext) {
+      const nextStart = getShiftStart(partnerNext.date, partnerNext.type);
+      if (nextStart && !hasEnoughRest(newPartnerEnd, nextStart, userShift)) {
+        return { valid: false, reason: `Partnern har för lite vila efter det nya passet (krav: ${restLabel(userShift)}).` };
+      }
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * Hittar alla möjliga bytespartners för ett visst datum och en användare.
- * Returnerar bara personer från andra grupper som också arbetar den dagen.
+ * Söker även ±1 dag för att hitta korsdag-byten.
  */
 export function findSwapOptions(
   swapDate: Date,
   user: User,
   allUsers: User[],
   cycleStart: Date,
-  blockedDates: BlockedDate[] = []
+  blockedPeriods: BlockedPeriod[] = []
 ): SwapOption[] {
   const userShift = getShiftForDate(swapDate, user.group, cycleStart);
 
   // Kan bara byta om man själv arbetar
   if (userShift === 'L') return [];
 
+  const swapDateStr = formatDate(swapDate);
   const options: SwapOption[] = [];
 
   for (const partner of allUsers) {
-    // Hoppa över sig själv och sin egen grupp
     if (partner.name === user.name || partner.group === user.group) continue;
 
-    // Hoppa över blockerade partners
-    if (blockedDates.some(b => b.userName === partner.name && b.date === formatDate(swapDate))) continue;
+    // Hoppa över blockerade partners på det begärda datumet
+    if (blockedPeriods.some(p => p.userName === partner.name && p.from <= swapDateStr && swapDateStr <= p.to)) continue;
 
-    const partnerShift = getShiftForDate(swapDate, partner.group, cycleStart);
+    // Sök samma dag (offset 0) samt dagen innan (-1) och dagen efter (+1)
+    for (const offset of [0, -1, 1]) {
+      const partnerDate = new Date(swapDate);
+      partnerDate.setDate(partnerDate.getDate() + offset);
 
-    // Partnern måste också arbeta
-    if (partnerShift === 'L') continue;
+      const partnerShift = getShiftForDate(partnerDate, partner.group, cycleStart);
+      if (partnerShift === 'L') continue;
 
-    const result = checkSwapCompatibility(
-      swapDate,
-      user.group,
-      userShift,
-      partner.group,
-      partnerShift,
-      cycleStart
-    );
+      let result: { valid: boolean; reason?: string };
+      if (offset === 0) {
+        result = checkSwapCompatibility(swapDate, user.group, userShift, partner.group, partnerShift, cycleStart);
+      } else {
+        result = checkCrossDaySwapCompatibility(swapDate, user.group, userShift, partnerDate, partner.group, partnerShift, cycleStart);
+      }
 
-    options.push({
-      partnerName: partner.name,
-      partnerGroup: partner.group,
-      myShift: userShift,
-      partnerShift,
-      date: swapDate,
-      valid: result.valid,
-      reason: result.reason,
-    });
+      options.push({
+        partnerName: partner.name,
+        partnerGroup: partner.group,
+        myShift: userShift,
+        partnerShift,
+        date: swapDate,
+        partnerDate,
+        dayOffset: offset,
+        valid: result.valid,
+        reason: result.reason,
+      });
+    }
   }
 
-  // Sortera: giltiga byten först
+  // Sortera: giltiga byten först, sedan samma dag före korsdag, sedan namn
   options.sort((a, b) => {
     if (a.valid && !b.valid) return -1;
     if (!a.valid && b.valid) return 1;
+    const aAbs = Math.abs(a.dayOffset);
+    const bAbs = Math.abs(b.dayOffset);
+    if (aAbs !== bAbs) return aAbs - bAbs;
     return a.partnerName.localeCompare(b.partnerName);
   });
 
@@ -248,8 +360,8 @@ export function findCoverOptions(
   user: User,
   allUsers: User[],
   cycleStart: Date,
-  lookaheadDays = 56,
-  blockedDates: BlockedDate[] = []
+  lookaheadDays = 62,
+  blockedPeriods: BlockedPeriod[] = []
 ): CoverOption[] {
   const userShift = getShiftForDate(coverDate, user.group, cycleStart);
 
@@ -258,6 +370,7 @@ export function findCoverOptions(
 
   const coverShiftStart = getShiftStart(coverDate, userShift);
   const coverShiftEnd = getShiftEnd(coverDate, userShift);
+  const coverDateStr = formatDate(coverDate);
 
   const options: CoverOption[] = [];
 
@@ -265,7 +378,7 @@ export function findCoverOptions(
     if (candidate.name === user.name || candidate.group === user.group) continue;
 
     // Blockerad kandidat – kan inte täcka
-    if (blockedDates.some(b => b.userName === candidate.name && b.date === formatDate(coverDate))) {
+    if (blockedPeriods.some(p => p.userName === candidate.name && p.from <= coverDateStr && coverDateStr <= p.to)) {
       options.push({ coverPerson: candidate, canCover: false, coverReason: 'Inte tillgänglig', paybackOptions: [], isDN: false });
       continue;
     }
@@ -349,8 +462,9 @@ export function findCoverOptions(
 
       if (candidateDayShift === 'L') continue;
 
-      // Hoppa över om användaren har blockerat denna dag som återpassdag
-      if (blockedDates.some(b => b.userName === user.name && b.date === formatDate(day))) continue;
+      // Hoppa över om användaren har blockerat denna dag
+      const dayStr = formatDate(day);
+      if (blockedPeriods.some(p => p.userName === user.name && p.from <= dayStr && dayStr <= p.to)) continue;
 
       // D+N-återpass: användaren har D och återpasset är N (eller vice versa)
       const isDNPayback =

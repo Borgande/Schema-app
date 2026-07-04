@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { BlockedDate, ScheduledDay, SwapRecord, User } from '@/lib/types';
+import { BlockedPeriod, ScheduledDay, SwapRecord, User } from '@/lib/types';
 import {
   getScheduleRange,
   formatSwedishDate,
@@ -13,12 +13,12 @@ import {
   SHIFT_INFO,
 } from '@/lib/schedule';
 import {
-  addBlockedDate,
-  getBlockedDates,
+  addBlockedPeriod,
+  getBlockedPeriods,
   getConfig,
   getSwapRecords,
   getUser,
-  removeBlockedDate,
+  removeBlockedPeriod,
 } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
 
@@ -40,8 +40,9 @@ export default function MittSchemaPage() {
   const [schedule, setSchedule] = useState<ScheduledDay[]>([]);
   const [nextShiftDay, setNextShiftDay] = useState<ScheduledDay | null>(null);
   const [swapRecords, setSwapRecords] = useState<SwapRecord[]>([]);
-  const [myBlocks, setMyBlocks] = useState<BlockedDate[]>([]);
-  const [blockInput, setBlockInput] = useState('');
+  const [myBlocks, setMyBlocks] = useState<BlockedPeriod[]>([]);
+  const [blockFrom, setBlockFrom] = useState('');
+  const [blockTo, setBlockTo] = useState('');
   const [blockError, setBlockError] = useState('');
   const [today] = useState(() => new Date());
   const [monthOffset, setMonthOffset] = useState(0);
@@ -69,7 +70,7 @@ export default function MittSchemaPage() {
     );
     setNextShiftDay(next ?? null);
     setSwapRecords(getSwapRecords());
-    setMyBlocks(getBlockedDates().filter(b => b.userName === u.name));
+    setMyBlocks(getBlockedPeriods().filter(b => b.userName === u.name));
   }, [today, displayYear, displayMonth]);
 
   if (!user) {
@@ -87,20 +88,29 @@ export default function MittSchemaPage() {
   const cycleStart = parseDate(config.cycleStartDate);
 
   function handleAddBlock() {
-    if (!blockInput || !user) return;
-    const blockDate = parseDate(blockInput);
-    const shift = getShiftForDate(blockDate, user.group, cycleStart);
-    if (shift !== 'L') {
-      setBlockError('Du kan bara blockera lediga dagar (L).');
+    if (!blockFrom || !blockTo || !user) return;
+    if (blockFrom > blockTo) {
+      setBlockError('Startdatum måste vara före eller samma som slutdatum.');
       return;
     }
-    addBlockedDate({ userName: user.name, date: blockInput });
-    setMyBlocks(getBlockedDates().filter(b => b.userName === user.name));
-    setBlockInput('');
+    const fromDate = parseDate(blockFrom);
+    const toDate = parseDate(blockTo);
+    const diffDays = Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays > 60) {
+      setBlockError('Perioden får vara max 60 dagar.');
+      return;
+    }
+    addBlockedPeriod({ userName: user.name, from: blockFrom, to: blockTo });
+    setMyBlocks(getBlockedPeriods().filter(b => b.userName === user.name));
+    setBlockFrom('');
+    setBlockTo('');
     setBlockError('');
   }
 
-  const myDays = schedule.filter((d) => d.shifts[user.group] !== 'L');
+  const myDays = schedule.filter((d) => {
+    const swapRec = swapRecords.find(s => s.date === formatDate(d.date) && s.group === user.group);
+    return (swapRec ? swapRec.newShift : d.shifts[user.group]) !== 'L';
+  });
 
   return (
     <div>
@@ -223,40 +233,57 @@ export default function MittSchemaPage() {
         })}
       </div>
 
-      {/* Blockerade lediga dagar */}
+      {/* Otillgängliga perioder */}
       <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-        <h2 className="text-base font-semibold text-gray-800 mb-1">Otillgängliga lediga dagar</h2>
+        <h2 className="text-base font-semibold text-gray-800 mb-1">Otillgängliga perioder</h2>
         <p className="text-xs text-gray-500 mb-3">
-          Markera lediga dagar du inte kan jobba. Kollegor ser dem inte som bytesalternativ.
+          Markera perioder du inte kan jobba (max 60 dagar). Du syns inte som byteskandidat under dessa datum.
         </p>
-        <div className="flex gap-2 mb-2 flex-wrap">
-          <input
-            type="date"
-            value={blockInput}
-            onChange={e => { setBlockInput(e.target.value); setBlockError(''); }}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
+        <div className="flex gap-2 mb-2 flex-wrap items-end">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Från</label>
+            <input
+              type="date"
+              value={blockFrom}
+              onChange={e => { setBlockFrom(e.target.value); setBlockError(''); }}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Till</label>
+            <input
+              type="date"
+              value={blockTo}
+              min={blockFrom}
+              onChange={e => { setBlockTo(e.target.value); setBlockError(''); }}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
           <button
             onClick={handleAddBlock}
             className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            Markera otillgänglig
+            Lägg till
           </button>
         </div>
         {blockError && (
           <p className="text-xs text-red-600 mb-2">{blockError}</p>
         )}
         {myBlocks.length === 0 ? (
-          <p className="text-xs text-gray-400">Inga blockerade dagar registrerade.</p>
+          <p className="text-xs text-gray-400">Inga otillgängliga perioder registrerade.</p>
         ) : (
           <div className="space-y-1.5 mt-2">
             {myBlocks.map(b => (
-              <div key={b.date} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                <span className="text-sm text-gray-700">{formatSwedishDate(parseDate(b.date))}</span>
+              <div key={b.from} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <span className="text-sm text-gray-700">
+                  {b.from === b.to
+                    ? formatSwedishDate(parseDate(b.from))
+                    : `${formatSwedishDate(parseDate(b.from))} – ${formatSwedishDate(parseDate(b.to))}`}
+                </span>
                 <button
                   onClick={() => {
-                    removeBlockedDate(user.name, b.date);
-                    setMyBlocks(getBlockedDates().filter(bl => bl.userName === user.name));
+                    removeBlockedPeriod(user.name, b.from);
+                    setMyBlocks(getBlockedPeriods().filter(bl => bl.userName === user.name));
                   }}
                   className="text-xs text-red-600 hover:underline"
                 >
