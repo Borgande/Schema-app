@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CoverOption, PaybackDay, SwapOption, SwapRecord, User } from '@/lib/types';
-import { formatSwedishDate, getShiftForDate, parseDate, SHIFT_INFO } from '@/lib/schedule';
+import { formatDate, formatSwedishDate, getShiftForDate, parseDate, SHIFT_INFO } from '@/lib/schedule';
 import { findSwapOptions, findCoverOptions } from '@/lib/swapChecker';
 import { addSwapRecord, getBlockedPeriods, getConfig, getSwapRecords, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
@@ -43,10 +43,14 @@ function BytaContent() {
     const targetDate = datumParam ? parseDate(datumParam) : new Date();
     setDate(targetDate);
 
-    const myShift = getShiftForDate(targetDate, u.group, cycleStart);
+    const swapRecs = getSwapRecords();
+    const dateStr = formatDate(targetDate);
+    const existingSwap = swapRecs.find(s => s.date === dateStr && s.group === u.group);
+    const myShift = existingSwap ? existingSwap.newShift : getShiftForDate(targetDate, u.group, cycleStart);
     if (myShift === 'L') {
       setSwapOptions([]);
       setCoverOptions([]);
+      setSwapRecords(swapRecs);
       setLoading(false);
       return;
     }
@@ -54,7 +58,7 @@ function BytaContent() {
     const blockedPeriods = getBlockedPeriods();
     setSwapOptions(findSwapOptions(targetDate, u, config.users, cycleStart, blockedPeriods));
     setCoverOptions(findCoverOptions(targetDate, u, config.users, cycleStart, 62, blockedPeriods));
-    setSwapRecords(getSwapRecords());
+    setSwapRecords(swapRecs);
     setLoading(false);
   }, [datumParam]);
 
@@ -71,7 +75,9 @@ function BytaContent() {
 
   const config = getConfig();
   const cycleStart = parseDate(config.cycleStartDate);
-  const myShift = date ? getShiftForDate(date, user.group, cycleStart) : 'L';
+  const dateStr = date ? formatDate(date) : '';
+  const existingSwap = date ? swapRecords.find(s => s.date === dateStr && s.group === user.group) : null;
+  const myShift = date ? (existingSwap ? existingSwap.newShift : getShiftForDate(date, user.group, cycleStart)) : 'L';
 
   function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
     setLoading(true);
