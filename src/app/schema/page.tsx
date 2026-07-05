@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { GroupNumber, ScheduledDay, ShiftType, SwapRecord, User } from '@/lib/types';
+import { GroupNumber, ScheduledDay, ShiftType, User } from '@/lib/types';
 import { getScheduleRange, formatSwedishDate, formatDate, isWeekend, parseDate } from '@/lib/schedule';
-import { getConfig, getSwapRecords, getUser } from '@/lib/storage';
+import { getConfig, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
 
 const GROUP_HEADER: Record<GroupNumber, string> = {
@@ -29,15 +29,9 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-function getEffectiveShift(day: ScheduledDay, group: GroupNumber, records: SwapRecord[]): ShiftType {
-  const swap = records.find(s => s.date === formatDate(day.date) && s.group === group);
-  return swap ? swap.newShift : day.shifts[group];
-}
-
 export default function SchemaPage() {
   const [schedule, setSchedule] = useState<ScheduledDay[]>([]);
   const [user, setUser] = useState<User | null>(null);
-  const [swapRecords, setSwapRecords] = useState<SwapRecord[]>([]);
   const [today] = useState(() => new Date());
   const [monthOffset, setMonthOffset] = useState(0);
 
@@ -52,7 +46,6 @@ export default function SchemaPage() {
     const firstDay = new Date(displayYear, displayMonth, 1);
     const daysInMonth = new Date(displayYear, displayMonth + 1, 0).getDate();
     setSchedule(getScheduleRange(firstDay, daysInMonth, cycleStart));
-    setSwapRecords(getSwapRecords());
   }, [displayYear, displayMonth]);
 
   if (!schedule.length) {
@@ -128,7 +121,7 @@ export default function SchemaPage() {
                     )}
                   </td>
                   {GROUPS.map((g) => {
-                    const shift = getEffectiveShift(day, g, swapRecords);
+                    const shift = day.shifts[g];
                     return (
                       <td
                         key={g}
