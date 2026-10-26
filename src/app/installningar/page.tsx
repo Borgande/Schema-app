@@ -12,9 +12,6 @@ import {
   parseDate,
   formatDate,
   getShiftForDate,
-  SHIFT_INFO,
-  BASE_PATTERN,
-  GROUP_OFFSETS,
 } from '@/lib/schedule';
 import ShiftBadge from '@/components/ShiftBadge';
 
@@ -122,59 +119,6 @@ export default function InstallningarPage() {
             Kontrollera att dessa stämmer med ditt faktiska schema. Om inte, justera
             cykelstartdatumet.
           </p>
-        </div>
-      </section>
-
-      {/* Mönsteröversikt */}
-      <section className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-5">
-        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-          Rotationsmönster (28 dagar)
-        </h2>
-        <p className="text-xs text-gray-500 mb-3">
-          Schemaordning: Grupp 1 → 3 → 2 → 4 (varje grupp startar 7 dagar senare)
-        </p>
-        <div className="overflow-x-auto">
-          <table className="text-xs">
-            <thead>
-              <tr>
-                <th className="text-left pr-3 py-1 text-gray-500 font-medium">Dag</th>
-                {Array.from({ length: 28 }, (_, i) => (
-                  <th key={i} className="px-1 py-1 text-center text-gray-400 font-normal min-w-[1.6rem]">
-                    {i + 1}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((g) => {
-                const offset = GROUP_OFFSETS[g];
-                return (
-                  <tr key={g}>
-                    <td className={`pr-3 py-1 font-semibold text-xs ${GROUP_COLORS[g].split(' ')[1]}`}>
-                      G{g}
-                    </td>
-                    {Array.from({ length: 28 }, (_, i) => {
-                      const pos = ((i - offset) % 28 + 28) % 28;
-                      const shift = BASE_PATTERN[pos];
-                      const colorMap: Record<string, string> = {
-                        D: 'bg-blue-100 text-blue-800',
-                        N: 'bg-purple-100 text-purple-800',
-                        X: 'bg-orange-100 text-orange-800',
-                        L: 'text-gray-300',
-                      };
-                      return (
-                        <td key={i} className={`px-0.5 py-0.5 text-center`}>
-                          <span className={`inline-block w-5 text-center rounded text-xs font-medium ${colorMap[shift]}`}>
-                            {shift}
-                          </span>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
       </section>
 

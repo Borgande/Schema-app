@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CoverOption, PaybackDay, SwapOption, SwapRecord, User } from '@/lib/types';
-import { formatDate, formatSwedishDate, getShiftForDate, parseDate, SHIFT_INFO } from '@/lib/schedule';
+import { formatDate, formatSwedishDate, getShiftForDate, parseDate } from '@/lib/schedule';
 import { findSwapOptions, findCoverOptions } from '@/lib/swapChecker';
 import { addSwapRecord, getBlockedPeriods, getConfig, getSwapRecords, getUser } from '@/lib/storage';
 import ShiftBadge from '@/components/ShiftBadge';
@@ -85,9 +85,7 @@ function BytaContent() {
   }
 
   const validSwaps = swapOptions.filter(o => o.valid).length;
-  const canCoverCount = coverOptions.filter(
-    o => o.canCover && o.paybackOptions.some(p => p.valid)
-  ).length;
+  const viableCoverOptions = coverOptions.filter(o => o.canCover && o.paybackOptions.some(p => p.valid));
 
   return (
     <div>
@@ -136,10 +134,10 @@ function BytaContent() {
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              Täcka + jobba tillbaka
-              {canCoverCount > 0 && (
+              Täck upp
+              {viableCoverOptions.length > 0 && (
                 <span className="ml-2 bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded-full">
-                  {canCoverCount}
+                  {viableCoverOptions.length}
                 </span>
               )}
             </button>
@@ -163,24 +161,22 @@ function BytaContent() {
           {/* ── TÄCKA-FLIKEN ── */}
           {mode === 'tacka' && (
             <div>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-700">
-                <strong>Så fungerar det:</strong> Du vill ha{' '}
-                {date ? formatSwedishDate(date) : 'detta datum'} ledigt.
-                Nedan visas vem som kan täcka ditt pass.
-                Tryck på en person för att se vilka dagar du kan jobba tillbaka —
-                dagar då du är ledig och de jobbar, minst 4 dagar från täckningsdagen.
-                Klicka <strong>Registrera</strong> på ett återpass för att spara arrangemanget i ditt schema.
-                <span className="block mt-1">
-                  <strong>D+N-undantag:</strong> en kollega med D kan täcka ditt N-pass (och vice versa) –
-                  märks med <span className="bg-orange-100 text-orange-700 px-1 rounded">D+N</span>.
-                </span>
-              </div>
-
-              {coverOptions.length === 0 ? (
-                <EmptyUsersMessage />
+              {viableCoverOptions.length === 0 ? (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+                  <p className="text-gray-500 text-sm">
+                    {coverOptions.length === 0
+                      ? 'Inga registrerade kollegor – lägg till i Inställningar.'
+                      : 'Ingen kan täcka detta pass just nu.'}
+                  </p>
+                  {coverOptions.length === 0 && (
+                    <Link href="/installningar" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
+                      Gå till Inställningar →
+                    </Link>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-3">
-                  {coverOptions.map((opt, i) => (
+                  {viableCoverOptions.map((opt, i) => (
                     <CoverCard
                       key={i}
                       option={opt}
@@ -213,10 +209,15 @@ function BytaContent() {
           {mode === 'byta' && (
             <div>
               {swapOptions.length === 0 ? (
-                <EmptyUsersMessage />
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+                  <p className="text-gray-500 text-sm">Inga registrerade kollegor – lägg till i Inställningar.</p>
+                  <Link href="/installningar" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
+                    Gå till Inställningar →
+                  </Link>
+                </div>
               ) : validSwaps === 0 ? (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
-                  <p className="text-gray-500 text-sm">Inga möjliga byten detta datum – viloreglerna tillåter det inte.</p>
+                  <p className="text-gray-500 text-sm">Inga möjliga byten detta datum.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -276,25 +277,15 @@ interface CoverCardProps {
 function CoverCard({ option, coverDate, userGroup, swapRecords, onRegisterPayback }: CoverCardProps) {
   const [expanded, setExpanded] = useState(false);
   const validPaybacks = option.paybackOptions.filter(p => p.valid);
-  const invalidPaybacks = option.paybackOptions.filter(p => !p.valid);
 
   const coverRegistered = swapRecords.some(
     s => s.date === toLocalDateInput(coverDate) && s.group === userGroup && s.partnerName === option.coverPerson.name
   );
 
-  const borderClass = option.canCover && validPaybacks.length > 0
-    ? 'border-green-200 bg-green-50'
-    : option.canCover
-    ? 'border-yellow-200 bg-yellow-50'
-    : 'border-red-200 bg-red-50';
-
   return (
-    <div className={`rounded-xl border ${borderClass} overflow-hidden`}>
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-lg ${option.canCover ? 'text-green-500' : 'text-red-400'}`}>
-            {option.canCover ? '✓' : '✗'}
-          </span>
           <span className="font-semibold text-gray-900">{option.coverPerson.name}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${GROUP_BADGE[option.coverPerson.group]}`}>
             Grupp {option.coverPerson.group}
@@ -305,94 +296,59 @@ function CoverCard({ option, coverDate, userGroup, swapRecords, onRegisterPaybac
             </span>
           )}
           {coverRegistered && (
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-              Täckning registrerad ✓
-            </span>
-          )}
-          {option.canCover ? (
-            <span className="text-xs text-green-700 font-medium">Kan täcka</span>
-          ) : (
-            <span className="text-xs text-red-600">{option.coverReason}</span>
+            <span className="text-xs text-green-700 font-medium">Registrerad ✓</span>
           )}
         </div>
 
-        {option.canCover && (
-          <button
-            onClick={() => setExpanded(e => !e)}
-            className="text-xs text-blue-600 hover:underline ml-2 whitespace-nowrap shrink-0"
-          >
-            {validPaybacks.length} återpass {expanded ? '▲' : '▼'}
-          </button>
-        )}
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="text-xs text-blue-600 hover:underline ml-2 whitespace-nowrap shrink-0"
+        >
+          {validPaybacks.length} återpass {expanded ? '▲' : '▼'}
+        </button>
       </div>
 
-      {option.canCover && expanded && (
-        <div className="border-t border-gray-200 bg-white p-4">
-          {validPaybacks.length === 0 ? (
-            <p className="text-xs text-gray-400">
-              Inga giltiga återpassdagar de närmaste 2 månaderna.
-            </p>
-          ) : (
-            <>
-              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
-                Dagar du kan jobba tillbaka ({validPaybacks.length} st)
-              </p>
-              <div className="space-y-1.5">
-                {validPaybacks.map((pb, i) => {
-                  const pbRegistered = swapRecords.some(
-                    s => s.date === toLocalDateInput(pb.date) && s.group === userGroup
-                  );
-                  return (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2"
-                    >
-                      <span className="text-sm text-gray-700">{formatSwedishDate(pb.date)}</span>
-                      <div className="flex items-center gap-2">
-                        {pb.isDN && (
-                          <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
-                            D+N
-                          </span>
-                        )}
-                        <ShiftBadge type={pb.shiftType} size="sm" />
-                        {pbRegistered ? (
-                          <span className="text-xs text-green-700 font-medium whitespace-nowrap">Registrerat ✓</span>
-                        ) : (
-                          <button
-                            onClick={() => onRegisterPayback(pb)}
-                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 whitespace-nowrap"
-                          >
-                            Registrera
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {invalidPaybacks.length > 0 && (
-                <p className="text-xs text-gray-400 mt-2">
-                  + {invalidPaybacks.length} dagar bryter viloreglerna (visas ej)
-                </p>
-              )}
-            </>
-          )}
+      {expanded && (
+        <div className="border-t border-gray-100 bg-gray-50 p-4">
+          <div className="space-y-1.5">
+            {validPaybacks.map((pb, i) => {
+              const pbRegistered = swapRecords.some(
+                s => s.date === toLocalDateInput(pb.date) && s.group === userGroup
+              );
+              return (
+                <div
+                  key={i}
+                  className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-2"
+                >
+                  <span className="text-sm text-gray-700">{formatSwedishDate(pb.date)}</span>
+                  <div className="flex items-center gap-2">
+                    {pb.isDN && (
+                      <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
+                        D+N
+                      </span>
+                    )}
+                    <ShiftBadge type={pb.shiftType} size="sm" />
+                    {pbRegistered ? (
+                      <span className="text-xs text-green-700 font-medium">✓</span>
+                    ) : (
+                      <button
+                        onClick={() => onRegisterPayback(pb)}
+                        className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 whitespace-nowrap"
+                      >
+                        Registrera
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function EmptyUsersMessage() {
-  return (
-    <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
-      <p className="text-gray-500 text-sm">Inga registrerade kollegor att jämföra med.</p>
-      <Link href="/installningar" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
-        Lägg till kollegor i Inställningar →
-      </Link>
-    </div>
-  );
-}
 
 export default function BytaPage() {
   return (

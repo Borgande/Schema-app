@@ -147,21 +147,6 @@ export default function SchemaPage() {
         </table>
       </div>
 
-      {/* Förklaring */}
-      <div className="mt-4 flex flex-wrap gap-3">
-        <div className="flex items-center gap-1 text-xs text-gray-500">
-          <ShiftBadge type="D" size="sm" /> = Dagskift 08:00–17:30
-        </div>
-        <div className="flex items-center gap-1 text-xs text-gray-500">
-          <ShiftBadge type="N" size="sm" /> = Nattskift 17:30–08:00
-        </div>
-        <div className="flex items-center gap-1 text-xs text-gray-500">
-          <ShiftBadge type="X" size="sm" /> = Dygnskift 08:00–08:00
-        </div>
-        <div className="flex items-center gap-1 text-xs text-gray-500">
-          <ShiftBadge type="L" size="sm" /> = Ledig
-        </div>
-      </div>
     </div>
   );
 }
